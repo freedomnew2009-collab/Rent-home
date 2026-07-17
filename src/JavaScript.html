@@ -1,0 +1,363 @@
+<script>
+  // สถานะของแอป
+  var CONFIG = { fields: [], sections: [] };
+  var FILES = {};        // key ของฟิลด์ -> {name, mimeType, data}
+  var EDIT_ROW = null;   // ถ้ากำลังแก้ไข = เลขแถว
+  var RECORDS = [];      // แคชรายการล่าสุด
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  function init() {
+    setupTabs();
+    document.getElementById('refreshBtn').addEventListener('click', loadRecords);
+    document.getElementById('cancelEdit').addEventListener('click', exitEditMode);
+    document.getElementById('searchBox').addEventListener('input', renderRecords);
+    document.getElementById('recordForm').addEventListener('submit', onSubmit);
+    document.getElementById('recordForm').addEventListener('reset', function () {
+      setTimeout(clearFilePreviews, 0);
+    });
+
+    google.script.run
+      .withSuccessHandler(function (cfg) {
+        CONFIG = cfg;
+        buildForm();
+        loadRecords();
+      })
+      .withFailureHandler(function (err) { toast('โหลดฟอร์มไม่สำเร็จ: ' + err.message, 'err'); })
+      .getFormConfig();
+  }
+
+  /* ---------------- แท็บ ---------------- */
+  function setupTabs() {
+    document.querySelectorAll('.tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.dataset.tab;
+        document.querySelectorAll('.tab').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
+        document.getElementById('tab-' + name).classList.add('active');
+        if (name === 'list') renderRecords();
+        window.scrollTo(0, 0);
+      });
+    });
+  }
+  function goTab(name) {
+    document.querySelector('.tab[data-tab="' + name + '"]').click();
+  }
+
+  /* ---------------- สร้างฟอร์ม ---------------- */
+  function buildForm() {
+    var container = document.getElementById('formSections');
+    container.innerHTML = '';
+
+    CONFIG.sections.forEach(function (sec) {
+      var fields = CONFIG.fields.filter(function (f) { return f.section === sec.key; });
+      if (!fields.length) return;
+
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="card-head"><span class="ic">' + sec.icon + '</span>' + escapeHtml(sec.title) + '</div>' +
+        '<div class="card-body" id="body-' + sec.key + '"></div>';
+      container.appendChild(card);
+
+      var body = card.querySelector('.card-body');
+      fields.forEach(function (f) { body.appendChild(buildField(f)); });
+    });
+  }
+
+  function buildField(f) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field' + (f.type === 'file' ? ' file-field' : '');
+
+    if (f.type === 'file') {
+      wrap.innerHTML =
+        '<label>' + escapeHtml(f.label) + '</label>' +
+        '<label class="drop" for="file-' + f.key + '">' +
+          '<span class="ic">📷</span><span class="txt">แตะเพื่อเลือก/ถ่ายรูปสลิป</span>' +
+        '</label>' +
+        '<input type="file" id="file-' + f.key + '" accept="image/*" data-key="' + f.key + '">' +
+        '<div class="existing-link" id="exist-' + f.key + '"></div>' +
+        '<div class="thumb-wrap" id="thumb-' + f.key + '">' +
+          '<img id="img-' + f.key + '">' +
+          '<div class="thumb-actions"><button type="button" class="link-btn" data-clear="' + f.key + '">✕ เอารูปออก</button></div>' +
+        '</div>';
+      wrap.querySelector('input[type=file]').addEventListener('change', onFilePicked);
+      wrap.querySelector('[data-clear]').addEventListener('click', function () { clearFile(f.key); });
+    } else {
+      var input;
+      if (f.type === 'date') input = '<input type="date" id="fld-' + f.key + '">';
+      else if (f.type === 'number') input = '<input type="number" step="0.01" inputmode="decimal" id="fld-' + f.key + '" placeholder="0.00">';
+      else input = '<input type="text" id="fld-' + f.key + '">';
+      wrap.innerHTML = '<label for="fld-' + f.key + '">' + escapeHtml(f.label) + '</label>' + input;
+    }
+    return wrap;
+  }
+
+  /* ---------------- จัดการไฟล์รูป ---------------- */
+  function onFilePicked(e) {
+    var key = e.target.dataset.key;
+    var file = e.target.files[0];
+    if (!file) return;
+
+    if (!/^image\//.test(file.type)) { toast('กรุณาเลือกไฟล์รูปภาพ', 'err'); e.target.value = ''; return; }
+    if (file.size > 15 * 1024 * 1024) { toast('ไฟล์ใหญ่เกิน 15MB', 'err'); e.target.value = ''; return; }
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      var dataUrl = reader.result;
+      var base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+      FILES[key] = { name: file.name, mimeType: file.type, data: base64 };
+      var img = document.getElementById('img-' + key);
+      img.src = dataUrl;
+      document.getElementById('thumb-' + key).classList.add('show');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearFile(key) {
+    delete FILES[key];
+    var input = document.getElementById('file-' + key);
+    if (input) input.value = '';
+    document.getElementById('thumb-' + key).classList.remove('show');
+    document.getElementById('img-' + key).src = '';
+  }
+
+  function clearFilePreviews() {
+    FILES = {};
+    CONFIG.fields.filter(function (f) { return f.type === 'file'; }).forEach(function (f) {
+      var t = document.getElementById('thumb-' + f.key);
+      if (t) t.classList.remove('show');
+      var ex = document.getElementById('exist-' + f.key);
+      if (ex) ex.innerHTML = '';
+    });
+  }
+
+  /* ---------------- บันทึกข้อมูล ---------------- */
+  function onSubmit(e) {
+    e.preventDefault();
+
+    var values = {};
+    CONFIG.fields.forEach(function (f) {
+      if (f.type === 'file') {
+        if (FILES[f.key]) values[f.key] = FILES[f.key];
+        // ถ้าไม่ได้แนบไฟล์ใหม่ ตอนแก้ไขจะคงลิงก์เดิม (ฝั่งเซิร์ฟเวอร์จัดการ)
+      } else {
+        var el = document.getElementById('fld-' + f.key);
+        var v = el ? el.value : '';
+        if (f.type === 'date' && v) v = toThaiDate(v); // yyyy-mm-dd -> dd/mm/yyyy
+        values[f.key] = v;
+      }
+    });
+
+    var hasAny = Object.keys(values).some(function (k) {
+      var v = values[k];
+      return v && (typeof v === 'string' ? v.trim() !== '' : true);
+    });
+    if (!hasAny) { toast('กรุณากรอกข้อมูลอย่างน้อย 1 ช่อง', 'err'); return; }
+
+    showOverlay(EDIT_ROW ? 'กำลังบันทึกการแก้ไข…' : 'กำลังบันทึก & อัปโหลดรูป…');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideOverlay();
+        if (res && res.ok) {
+          toast(res.edited ? 'แก้ไขเรียบร้อย ✓' : 'บันทึกเรียบร้อย ✓', 'ok');
+          resetForm();
+          loadRecords();
+          goTab('list');
+        } else {
+          toast('บันทึกไม่สำเร็จ: ' + (res && res.error ? res.error : 'ไม่ทราบสาเหตุ'), 'err');
+        }
+      })
+      .withFailureHandler(function (err) {
+        hideOverlay();
+        toast('เกิดข้อผิดพลาด: ' + err.message, 'err');
+      })
+      .saveRecord({ row: EDIT_ROW, values: values });
+  }
+
+  function resetForm() {
+    document.getElementById('recordForm').reset();
+    clearFilePreviews();
+    exitEditMode();
+  }
+
+  /* ---------------- โหลด & แสดงรายการ ---------------- */
+  function loadRecords() {
+    document.getElementById('recordList').innerHTML = '<div class="empty">กำลังโหลด…</div>';
+    google.script.run
+      .withSuccessHandler(function (recs) {
+        RECORDS = recs || [];
+        renderSummary();
+        renderRecords();
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('recordList').innerHTML = '<div class="empty">โหลดไม่สำเร็จ: ' + escapeHtml(err.message) + '</div>';
+      })
+      .getRecords();
+  }
+
+  function renderSummary() {
+    var sum = function (key) {
+      return RECORDS.reduce(function (t, r) { return t + parseAmount(r[key]); }, 0);
+    };
+    var boxes = [
+      { k: 'จำนวนรายการ', v: RECORDS.length + ' รายการ' },
+      { k: 'รวมค่าเช่า', v: money(sum('rentAmount')) },
+      { k: 'รวมค่าส่วนกลาง', v: money(sum('commonAmount')) },
+      { k: 'รวมผ่อนบ้านเพิ่มเติม', v: money(sum('extraAmount')) }
+    ];
+    document.getElementById('summary').innerHTML = boxes.map(function (b) {
+      return '<div class="box"><div class="k">' + b.k + '</div><div class="v">' + b.v + '</div></div>';
+    }).join('');
+  }
+
+  function renderRecords() {
+    var q = (document.getElementById('searchBox').value || '').toLowerCase().trim();
+    var list = document.getElementById('recordList');
+
+    var filtered = RECORDS.filter(function (r) {
+      if (!q) return true;
+      return CONFIG.fields.some(function (f) {
+        return String(r[f.key] || '').toLowerCase().indexOf(q) >= 0;
+      });
+    });
+
+    if (!filtered.length) {
+      list.innerHTML = '<div class="empty">' + (RECORDS.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีรายการ — กด “เพิ่มรายการ” เพื่อเริ่มบันทึก') + '</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(recordCard).join('');
+    list.querySelectorAll('[data-edit]').forEach(function (btn) {
+      btn.addEventListener('click', function () { startEdit(Number(btn.dataset.edit)); });
+    });
+  }
+
+  function recordCard(r) {
+    var title = r.installment ? escapeHtml(r.installment) : 'รายการ (แถว ' + r.row + ')';
+    var lines = [
+      moneyLine('🏠 ค่าเช่า', r.rentAmount, r.rentDate, r.rentSlip),
+      moneyLine('🏢 ค่าส่วนกลาง', r.commonAmount, r.commonDate, r.commonSlip),
+      moneyLine('🏦 ผ่อนบ้านเพิ่มเติม', r.extraAmount, r.extraDate, r.extraSlip),
+      slipOnlyLine('📄 เปลี่ยนนิติ', r.juristicSlip),
+      moneyLine('🚨 เงินฉุกเฉิน (ER)', r.erAmount, r.erDate, ''),
+      moneyLine('🪙 ทองคำ (Gold Now)', r.goldAmount, r.goldDate, ''),
+      moneyLine('🧾 ภาษี', r.taxAmount, r.taxDate, '')
+    ].filter(Boolean).join('');
+
+    return '' +
+      '<div class="record">' +
+        '<div class="r-head">' +
+          '<span class="r-title">' + title + '</span>' +
+          '<span class="r-date">' + escapeHtml(r.rentDate || '') + '</span>' +
+        '</div>' +
+        '<div class="r-rows">' + (lines || '<div class="r-line"><span class="lbl">— ไม่มีข้อมูล —</span></div>') + '</div>' +
+        '<div class="r-actions"><button data-edit="' + r.row + '">✏️ แก้ไข</button></div>' +
+      '</div>';
+  }
+
+  function moneyLine(label, amount, date, slip) {
+    if (!amount && !date && !slip) return '';
+    var right = [];
+    if (amount) right.push(money(parseAmount(amount)));
+    if (date) right.push('<span class="r-date">' + escapeHtml(date) + '</span>');
+    if (slip && /^https?:\/\//.test(slip)) right.push('<a href="' + escapeAttr(slip) + '" target="_blank" rel="noopener">ดูสลิป</a>');
+    else if (slip) right.push(escapeHtml(slip));
+    return '<div class="r-line"><span class="lbl">' + label + '</span><span class="val">' + right.join(' · ') + '</span></div>';
+  }
+
+  function slipOnlyLine(label, slip) {
+    if (!slip) return '';
+    var v = /^https?:\/\//.test(slip)
+      ? '<a href="' + escapeAttr(slip) + '" target="_blank" rel="noopener">ดูสลิป</a>'
+      : escapeHtml(slip);
+    return '<div class="r-line"><span class="lbl">' + label + '</span><span class="val">' + v + '</span></div>';
+  }
+
+  /* ---------------- โหมดแก้ไข ---------------- */
+  function startEdit(row) {
+    var rec = RECORDS.filter(function (r) { return r.row === row; })[0];
+    if (!rec) return;
+
+    EDIT_ROW = row;
+    document.getElementById('editRow').textContent = row;
+    document.getElementById('editBanner').classList.remove('hidden');
+    document.getElementById('submitBtn').textContent = '💾 บันทึกการแก้ไข';
+
+    clearFilePreviews();
+    CONFIG.fields.forEach(function (f) {
+      if (f.type === 'file') {
+        var ex = document.getElementById('exist-' + f.key);
+        var val = rec[f.key];
+        if (val && /^https?:\/\//.test(val)) {
+          ex.innerHTML = 'มีสลิปเดิม: <a href="' + escapeAttr(val) + '" target="_blank" rel="noopener">ดูสลิป</a> (แนบรูปใหม่เพื่อแทนที่)';
+        } else { ex.innerHTML = ''; }
+      } else {
+        var el = document.getElementById('fld-' + f.key);
+        if (!el) return;
+        var v = rec[f.key] || '';
+        if (f.type === 'date' && v) v = toISODate(v); // dd/mm/yyyy -> yyyy-mm-dd
+        el.value = v;
+      }
+    });
+
+    goTab('add');
+    window.scrollTo(0, 0);
+  }
+
+  function exitEditMode() {
+    EDIT_ROW = null;
+    document.getElementById('editBanner').classList.add('hidden');
+    document.getElementById('submitBtn').textContent = '💾 บันทึกข้อมูล';
+    CONFIG.fields.filter(function (f) { return f.type === 'file'; }).forEach(function (f) {
+      var ex = document.getElementById('exist-' + f.key);
+      if (ex) ex.innerHTML = '';
+    });
+  }
+
+  /* ---------------- ตัวช่วย ---------------- */
+  function parseAmount(v) {
+    if (!v) return 0;
+    var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function money(n) {
+    return '฿' + (n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function toThaiDate(iso) {
+    var p = iso.split('-'); // yyyy-mm-dd
+    if (p.length !== 3) return iso;
+    return p[2] + '/' + p[1] + '/' + p[0];
+  }
+  function toISODate(th) {
+    var p = String(th).split('/'); // dd/mm/yyyy
+    if (p.length !== 3) return '';
+    var d = p[0].padStart(2, '0'), m = p[1].padStart(2, '0'), y = p[2];
+    if (y.length !== 4) return '';
+    return y + '-' + m + '-' + d;
+  }
+
+  function showOverlay(text) {
+    document.getElementById('overlayText').textContent = text || 'กำลังบันทึก…';
+    document.getElementById('overlay').classList.remove('hidden');
+  }
+  function hideOverlay() { document.getElementById('overlay').classList.add('hidden'); }
+
+  var toastTimer;
+  function toast(msg, type) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + (type || '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.add('hidden'); }, 3500);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+</script>

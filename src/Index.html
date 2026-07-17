@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+  <div id="app">
+    <!-- แถบหัว -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">🏠</span>
+        <div>
+          <h1>Rent-home</h1>
+          <p>บันทึกค่าใช้จ่ายบ้าน &amp; อัปโหลดสลิป</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- แท็บ -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="add">➕ เพิ่มรายการ</button>
+      <button class="tab" data-tab="list">📋 รายการทั้งหมด</button>
+    </nav>
+
+    <!-- หน้าเพิ่ม/แก้ไขรายการ -->
+    <section id="tab-add" class="tab-panel active">
+      <div id="editBanner" class="edit-banner hidden">
+        ✏️ กำลังแก้ไขรายการ (แถวที่ <span id="editRow"></span>)
+        <button type="button" id="cancelEdit" class="link-btn">ยกเลิก</button>
+      </div>
+
+      <form id="recordForm">
+        <div id="formSections"><!-- สร้างจาก JavaScript --></div>
+        <div class="actions">
+          <button type="submit" id="submitBtn" class="btn-primary">💾 บันทึกข้อมูล</button>
+          <button type="reset" class="btn-ghost">ล้างฟอร์ม</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- หน้ารายการทั้งหมด -->
+    <section id="tab-list" class="tab-panel">
+      <div id="summary" class="summary"></div>
+      <div class="list-toolbar">
+        <input id="searchBox" type="search" placeholder="🔍 ค้นหา (งวด / วันที่ / จำนวนเงิน)">
+        <button type="button" id="refreshBtn" class="btn-ghost small">↻ รีเฟรช</button>
+      </div>
+      <div id="recordList" class="record-list">
+        <div class="empty">กำลังโหลด…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Toast แจ้งเตือน -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Overlay ตอนบันทึก -->
+  <div id="overlay" class="overlay hidden">
+    <div class="spinner"></div>
+    <p id="overlayText">กำลังบันทึก…</p>
+  </div>
+
+  <?!= include('JavaScript'); ?>
+</body>
+</html>
