@@ -78,23 +78,39 @@ var DRIVE_FOLDER_ID = '';       // เว้นว่าง = สร้างโ
 
 ---
 
-## 🛠️ วิธีติดตั้งสำหรับนักพัฒนา (ใช้ `clasp`)
+## 🛠️ วิธีติดตั้งด้วย `clasp` (command line)
 
-ถ้าคุ้นเคยกับ command line สามารถ push โค้ดขึ้น Apps Script ได้เลย:
+เวอร์ชันนี้ตั้งค่าให้ deploy เป็นสคริปต์แบบ **standalone** ที่เปิดสเปรดชีตด้วย `SPREADSHEET_ID`
+(กำหนดไว้แล้วใน `src/Code.gs`) จึงใช้ `clasp` ได้ทั้งกระบวนการ
+
+**สิ่งที่ต้องทำครั้งเดียวก่อนเริ่ม:** เปิดใช้ Apps Script API ที่
+👉 https://script.google.com/home/usersettings (สวิตช์ **Google Apps Script API → On**)
 
 ```bash
-npm install -g @google/clasp
-clasp login
+# 1) ติดตั้ง clasp (อยู่ใน devDependencies แล้ว)
+npm install
 
-# ผูกกับสเปรดชีต (สร้างสคริปต์ที่ผูกกับชีตนี้)
-# หา Spreadsheet ID จาก URL: .../d/<ID>/edit
-clasp create --type sheets --title "Rent-home Web App" --rootDir ./src
+# 2) ล็อกอินบัญชี Google ของคุณ (เปิดเบราว์เซอร์ให้อนุญาตสิทธิ์)
+#    ถ้าอยู่บนเครื่องที่ไม่มีเบราว์เซอร์ ใช้:  npx clasp login --no-localhost
+npm run login
 
-clasp push          # อัปโหลดโค้ดในโฟลเดอร์ src/ ขึ้นไป
-clasp deploy        # สร้าง deployment (หรือทำผ่านหน้าเว็บตามขั้นตอนด้านบน)
+# 3) สร้างโปรเจกต์ + อัปโหลดโค้ด + สร้าง deployment ในคำสั่งเดียว
+npm run setup
+#    (เท่ากับ clasp create → clasp push → clasp deploy)
+
+# 4) เปิดโปรเจกต์เพื่อดู Web app URL / จัดการ deployment
+npm run open
 ```
 
-> ต้องเปิดใช้ Apps Script API ที่ https://script.google.com/home/usersettings ก่อนใช้ clasp
+หลังจากนั้นเข้าไปที่โปรเจกต์ → **Deploy → Manage deployments** เพื่อคัดลอก **Web app URL**
+(ครั้งแรกต้องกด **Authorize** อนุญาตสิทธิ์ Sheets + Drive)
+
+> คำสั่งย่อยที่มีให้: `npm run push` (อัปเดตโค้ด), `npm run deploy` (สร้างเวอร์ชันใหม่),
+> `npm run login:status` (เช็กว่าล็อกอินด้วยบัญชีไหน)
+
+> **หมายเหตุ:** clasp จะเก็บ token ล็อกอินไว้ที่ `~/.clasprc.json` บนเครื่องคุณ
+> และไฟล์ `.clasp.json` (มี scriptId) จะถูกสร้างในโปรเจกต์หลัง `npm run create` —
+> ทั้งสองไฟล์ถูกใส่ไว้ใน `.gitignore` แล้ว จะไม่ถูกอัปขึ้น git
 
 ---
 

@@ -1,0 +1,18 @@
+{
+  "name": "rent-home-webapp",
+  "version": "1.0.0",
+  "description": "Rent-home — Google Apps Script web app for the rental/home expense sheet with Drive slip upload",
+  "private": true,
+  "scripts": {
+    "login": "clasp login",
+    "login:status": "clasp login --status",
+    "create": "clasp create --type webapp --title \"Rent-home Web App\" --rootDir ./src",
+    "push": "clasp push -f",
+    "deploy": "clasp deploy --description \"Rent-home web app\"",
+    "open": "clasp open",
+    "setup": "npm run create && npm run push && npm run deploy"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}

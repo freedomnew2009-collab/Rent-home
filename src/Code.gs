@@ -11,6 +11,11 @@
  *  การตั้งค่า (แก้ได้ตามต้องการ)
  *  ========================================================================= */
 
+// รหัสสเปรดชีต (จาก URL: .../d/<ID>/edit)
+//   - จำเป็นสำหรับสคริปต์แบบ standalone ที่ deploy ผ่าน clasp
+//   - ถ้าเว้นว่าง จะใช้สเปรดชีตที่ผูกกับสคริปต์ (กรณีติดตั้งผ่าน Extensions → Apps Script)
+var SPREADSHEET_ID = 'REDACTED';
+
 // ชื่อชีต (แท็บ) ที่จะบันทึกข้อมูล ถ้าไม่พบจะใช้ชีตแรกของไฟล์
 var SHEET_NAME = 'ข้อมูลหลัก';
 
@@ -91,7 +96,9 @@ function include(filename) {
  *  ========================================================================= */
 
 function getSheet_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.getSheets()[0];
   return sheet;
