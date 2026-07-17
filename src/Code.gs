@@ -23,10 +23,27 @@ var SHEET_NAME = 'ข้อมูลหลัก';
 var HEADER_ROW = 2;
 
 // โฟลเดอร์ใน Google Drive สำหรับเก็บรูปสลิป
-//   - ถ้าใส่ ID โฟลเดอร์ไว้ จะอัปโหลดเข้าโฟลเดอร์นั้น
+//   - ตั้งเป็นโฟลเดอร์เดิมที่เก็บสลิปอยู่แล้ว เพื่อให้ไฟล์ใหม่ไปรวมกับของเก่า
 //   - ถ้าเว้นว่าง จะสร้าง/ใช้โฟลเดอร์ชื่อ SLIP_FOLDER_NAME ใน Drive ของคุณอัตโนมัติ
-var DRIVE_FOLDER_ID = '';
+var DRIVE_FOLDER_ID = 'REDACTED';
 var SLIP_FOLDER_NAME = 'Rent-home Slips';
+
+/**
+ * รูปแบบการตั้งชื่อไฟล์สลิป — ให้ตรงกับที่ใช้ใน Google Drive อยู่แล้ว
+ *   prefix      : คำนำหน้า (Rent / ส่วนกลาง / Bank)
+ *   dateKey     : ใช้ "วันที่จ่าย" ช่องไหนมาตั้งชื่อ
+ *   calendar    : 'greg' = ค.ศ.  |  'buddhist' = พ.ศ. (+543)
+ *   granularity : 'day' = ปี-เดือน-วัน  |  'month' = ปี-เดือน
+ *   suffix      : ต่อท้าย (ถ้ามี)
+ * ตัวอย่าง: Rent_2026-07-10.jpg | ส่วนกลาง_2569-07-17.jpg | Bank_2026-07-17.jpg
+ *           ส่วนกลาง_2569-05_เปลี่ยนนิติ.jpg
+ */
+var SLIP_NAMING = {
+  rentSlip:     { prefix: 'Rent',     dateKey: 'rentDate',   calendar: 'greg',     granularity: 'day' },
+  commonSlip:   { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'day' },
+  extraSlip:    { prefix: 'Bank',     dateKey: 'extraDate',  calendar: 'greg',     granularity: 'day' },
+  juristicSlip: { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'month', suffix: 'เปลี่ยนนิติ' }
+};
 
 /**
  * นิยามฟิลด์ทั้งหมด — เป็นแหล่งข้อมูลกลางที่ทั้งฝั่งเซิร์ฟเวอร์และหน้าเว็บใช้ร่วมกัน
@@ -216,7 +233,7 @@ function saveRecord(payload) {
 
       if (f.type === 'file') {
         if (raw && raw.data) {
-          rowValues[col] = uploadFileToDrive_(raw, f.key);
+          rowValues[col] = uploadFileToDrive_(raw, f.key, values);
         }
         // ถ้าไม่ได้แนบไฟล์ใหม่ -> คงลิงก์เดิมไว้
       } else if (f.type === 'number') {
@@ -262,13 +279,14 @@ function getSlipFolder_() {
 
 /**
  * อัปโหลดไฟล์ (base64) เข้า Drive แล้วคืนค่า URL ที่เปิดดูได้
- * @param {Object} fileObj {name, mimeType, data(base64 ไม่รวม prefix)}
- * @param {string} keyPrefix ใช้ตั้งชื่อไฟล์
+ * @param {Object} fileObj  {name, mimeType, data(base64 ไม่รวม prefix)}
+ * @param {string} fieldKey key ของช่องสลิป (เช่น rentSlip)
+ * @param {Object} values   ค่าจากฟอร์มทั้งหมด (ใช้ดึงวันที่มาตั้งชื่อไฟล์)
  */
-function uploadFileToDrive_(fileObj, keyPrefix) {
+function uploadFileToDrive_(fileObj, fieldKey, values) {
   var folder = getSlipFolder_();
   var bytes = Utilities.base64Decode(fileObj.data);
-  var safeName = buildFileName_(fileObj.name, keyPrefix);
+  var safeName = buildSlipName_(fileObj, fieldKey, values || {});
   var blob = Utilities.newBlob(bytes, fileObj.mimeType || 'application/octet-stream', safeName);
   var file = folder.createFile(blob);
   try {
@@ -279,11 +297,62 @@ function uploadFileToDrive_(fileObj, keyPrefix) {
   return file.getUrl();
 }
 
-function buildFileName_(original, keyPrefix) {
-  var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmmss');
-  var ext = '';
-  if (original && original.indexOf('.') >= 0) {
-    ext = original.substring(original.lastIndexOf('.'));
+/**
+ * ตั้งชื่อไฟล์สลิปตามรูปแบบใน Google Drive (ดู SLIP_NAMING)
+ * เช่น Rent_2026-07-10.jpg, ส่วนกลาง_2569-07-17.jpg, Bank_2026-07-17.jpg
+ * ถ้าไม่มีวันที่ในฟอร์ม จะใช้วันที่ปัจจุบันแทน
+ */
+function buildSlipName_(fileObj, fieldKey, values) {
+  var ext = extractExt_(fileObj);
+  var cfg = SLIP_NAMING[fieldKey];
+
+  // ช่องสลิปที่ไม่มีในตารางตั้งชื่อ -> ใช้ชื่อเดิม + วันเวลา
+  if (!cfg) {
+    var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmmss');
+    return (fieldKey || 'slip') + '_' + stamp + ext;
   }
-  return (keyPrefix || 'slip') + '_' + stamp + ext;
+
+  var parts = parseThaiDate_(values[cfg.dateKey]) || todayParts_();
+  var year = (cfg.calendar === 'buddhist') ? parts.y + 543 : parts.y;
+  var dateStr = (cfg.granularity === 'month')
+    ? year + '-' + pad2_(parts.m)
+    : year + '-' + pad2_(parts.m) + '-' + pad2_(parts.d);
+
+  var name = cfg.prefix + '_' + dateStr;
+  if (cfg.suffix) name += '_' + cfg.suffix;
+  return name + ext;
 }
+
+/** ดึงนามสกุลไฟล์จากชื่อเดิม ถ้าไม่มีให้เดาจาก mimeType (ค่าเริ่มต้น .jpg) */
+function extractExt_(fileObj) {
+  var original = fileObj && fileObj.name ? String(fileObj.name) : '';
+  if (original.indexOf('.') >= 0) {
+    return original.substring(original.lastIndexOf('.')).toLowerCase();
+  }
+  var mt = (fileObj && fileObj.mimeType) ? String(fileObj.mimeType).toLowerCase() : '';
+  if (mt.indexOf('png') >= 0) return '.png';
+  if (mt.indexOf('webp') >= 0) return '.webp';
+  if (mt.indexOf('heic') >= 0) return '.heic';
+  if (mt.indexOf('gif') >= 0) return '.gif';
+  return '.jpg';
+}
+
+/** แปลงวันที่รูปแบบ dd/MM/yyyy (จากฟอร์ม) -> {y, m, d} แบบ ค.ศ. */
+function parseThaiDate_(str) {
+  if (!str) return null;
+  var p = String(str).trim().split('/');
+  if (p.length !== 3) return null;
+  var d = parseInt(p[0], 10), m = parseInt(p[1], 10), y = parseInt(p[2], 10);
+  if (!d || !m || !y) return null;
+  // เผื่อกรณีมีคนกรอกเป็น พ.ศ. มา (ปี > 2400) ให้แปลงกลับเป็น ค.ศ.
+  if (y > 2400) y -= 543;
+  return { y: y, m: m, d: d };
+}
+
+function todayParts_() {
+  var now = new Date();
+  var s = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd').split('-');
+  return { y: parseInt(s[0], 10), m: parseInt(s[1], 10), d: parseInt(s[2], 10) };
+}
+
+function pad2_(n) { return (n < 10 ? '0' : '') + n; }

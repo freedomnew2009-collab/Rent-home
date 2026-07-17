@@ -181,6 +181,25 @@
     document.getElementById('recordForm').reset();
     clearFilePreviews();
     exitEditMode();
+    applyInstallmentSuggestion();
+  }
+
+  /**
+   * เดา "งวดถัดไป" จากรายการที่มีอยู่ แล้วเติมให้อัตโนมัติ (แก้ไขได้)
+   * หางวดที่เป็นตัวเลขมากสุด เช่น "งวดที่ 18" -> เสนอ "งวดที่ 19"
+   */
+  function applyInstallmentSuggestion() {
+    var el = document.getElementById('fld-installment');
+    if (!el) return;
+    var max = 0;
+    RECORDS.forEach(function (r) {
+      var m = String(r.installment || '').match(/(\d+)/);
+      if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+    });
+    var next = max + 1;
+    el.placeholder = 'เช่น งวดที่ ' + next;
+    // เติมค่าให้เฉพาะตอนเพิ่มรายการใหม่ และช่องยังว่างอยู่
+    if (!EDIT_ROW && !el.value.trim()) el.value = 'งวดที่ ' + next;
   }
 
   /* ---------------- โหลด & แสดงรายการ ---------------- */
@@ -191,6 +210,7 @@
         RECORDS = recs || [];
         renderSummary();
         renderRecords();
+        applyInstallmentSuggestion();
       })
       .withFailureHandler(function (err) {
         document.getElementById('recordList').innerHTML = '<div class="empty">โหลดไม่สำเร็จ: ' + escapeHtml(err.message) + '</div>';
