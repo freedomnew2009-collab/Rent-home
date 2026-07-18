@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rent-home</title>
+<link rel="manifest" href="app.webmanifest">
+<meta name="theme-color" content="#2d2b2b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rent-home">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:#2d2b2b;color:#f8f4f4;font-family:-apple-system,"Noto Sans Thai","Segoe UI",Roboto,sans-serif;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+  .wrap{width:100%;max-width:360px;text-align:center}
+  .wm{font-family:Georgia,"Times New Roman",serif;font-weight:600;font-size:30px;letter-spacing:-.02em}
+  .wm .d{color:#38a6cf}
+  .sub{color:#bab6b6;font-size:13px;margin-top:6px;font-style:italic}
+  .spin{width:40px;height:40px;border-radius:50%;border:3px solid #605d5d;border-top-color:#38a6cf;
+    animation:spin .8s linear infinite;margin:30px auto 0}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn{display:inline-block;margin-top:26px;background:#0088b0;color:#fff;text-decoration:none;
+    font-weight:600;padding:13px 26px;border-radius:999px;font-size:15px;border:0;cursor:pointer}
+  .btn:hover{background:#006786}
+  .setup{margin-top:26px;text-align:left;display:none}
+  .setup label{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#bab6b6;margin-bottom:8px}
+  .setup input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid #605d5d;background:#201e1d;color:#f8f4f4;font-size:14px}
+  .setup .hint{font-size:12px;color:#9b9797;margin-top:10px;line-height:1.5}
+  .err{color:#ff90b1;font-size:13px;margin-top:12px;display:none}
+  .link{color:#62c5ee;font-size:13px;display:inline-block;margin-top:18px;cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="wm">Rent<span class="d">·</span>home</div>
+  <div class="sub" data-sub>กำลังเปิดแอป…</div>
+
+  <div data-loading>
+    <div class="spin"></div>
+    <a class="btn" data-open href="#">แตะเพื่อเปิด Rent-home</a>
+  </div>
+
+  <div class="setup" data-setup>
+    <label>วางลิงก์เว็บแอป (Web app URL ที่ลงท้าย /exec)</label>
+    <input type="url" data-url-input placeholder="https://script.google.com/macros/s/.../exec" inputmode="url" autocomplete="off">
+    <div class="err" data-err>ลิงก์ไม่ถูกต้อง — ต้องขึ้นต้น https:// และลงท้าย /exec</div>
+    <button class="btn" data-save style="margin-top:16px">บันทึก &amp; เปิดแอป</button>
+    <div class="hint">วางแค่ครั้งเดียว ระบบจะจำไว้ในเครื่องนี้ · หาลิงก์ได้จาก Apps Script → Deploy → Manage deployments → คัดลอก <b>Web app URL</b></div>
+  </div>
+
+  <span class="link" data-change style="display:none">เปลี่ยนลิงก์เว็บแอป</span>
+</div>
+
+<script>
+  var KEY = 'renthome_exec_url';
+  var $ = function (s) { return document.querySelector(s); };
+
+  function valid(u) { return /^https:\/\/.+\/exec(\?.*)?$/.test(String(u || '').trim()); }
+
+  function showSetup(prefill) {
+    $('[data-loading]').style.display = 'none';
+    $('[data-setup]').style.display = 'block';
+    $('[data-change]').style.display = 'none';
+    $('[data-sub]').textContent = 'ตั้งค่าครั้งแรก';
+    if (prefill) $('[data-url-input]').value = prefill;
+    $('[data-url-input]').focus();
+  }
+
+  function go(url) {
+    $('[data-open]').setAttribute('href', url);
+    $('[data-change]').style.display = 'inline-block';
+    // เด้งเข้าแอปจริง (top-level navigation — ล็อกอิน Google ทำงานปกติ)
+    location.replace(url);
+  }
+
+  // register service worker (จำเป็นสำหรับให้ Chrome ติดตั้งเป็นแอปได้)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+
+  // รับลิงก์จาก ?u= (ตั้งค่าครั้งเดียวผ่าน URL ก็ได้)
+  var qp = new URLSearchParams(location.search).get('u');
+  if (qp && valid(qp)) { localStorage.setItem(KEY, qp.trim()); history.replaceState(null, '', location.pathname); }
+
+  var saved = localStorage.getItem(KEY);
+
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-save]')) {
+      var v = $('[data-url-input]').value.trim();
+      if (!valid(v)) { $('[data-err]').style.display = 'block'; return; }
+      localStorage.setItem(KEY, v); go(v);
+    }
+    if (e.target.closest('[data-change]')) { showSetup(localStorage.getItem(KEY) || ''); }
+  });
+
+  if (saved && valid(saved)) go(saved);
+  else showSetup(saved || '');
+</script>
+</body>
+</html>
