@@ -26,11 +26,10 @@
 | ไฟล์ | หน้าที่ |
 |------|---------|
 | `src/Code.gs` | โค้ดฝั่งเซิร์ฟเวอร์ (อ่าน/เขียนชีต + อัปโหลด Drive + API dashboard/allocation) |
-| `src/Index.html` | โครงหน้าเว็บ (4 พาเนล: จัดเงิน/บันทึก/ประวัติ/สรุป) |
-| `src/Stylesheet.html` | สไตล์ธีม Broadsheet (CSS) |
-| `src/JavaScript.html` | ตรรกะหน้าเว็บ (JavaScript + google.script.run) |
-| `src/Icons.html` | คลังไอคอน (Phosphor duotone แบบ inline SVG) |
+| `src/Index.html` | **หน้าเว็บทั้งหมดในไฟล์เดียว** — โครง 4 พาเนล + CSS ธีม Broadsheet + ไอคอน + JavaScript รวมไว้ในไฟล์นี้แล้ว |
 | `src/appsscript.json` | ไฟล์ตั้งค่า/สิทธิ์ของ Apps Script |
+
+> 💡 เพื่อกันวางผิดไฟล์ ตอนนี้เหลือแค่ **2 ไฟล์ที่ต้องวาง** คือ `Code.gs` และ `Index.html` (CSS/ไอคอน/JS รวมอยู่ใน Index.html หมดแล้ว)
 
 ---
 
@@ -42,18 +41,18 @@
 1. เปิด Google Sheet ของคุณ ([ลิงก์ชีต](https://docs.google.com/spreadsheets/d/REDACTED/edit))
 2. เมนู **ส่วนขยาย (Extensions) → Apps Script**
 
-### 2) วางโค้ด
-ในหน้าต่าง Apps Script ให้สร้างไฟล์ให้ครบ 5 ไฟล์นี้ แล้วคัดลอกเนื้อหาจากโฟลเดอร์ `src/` มาวาง:
+### 2) วางโค้ด (แค่ 2 ไฟล์)
+ในหน้าต่าง Apps Script วางเนื้อหาจากโฟลเดอร์ `src/` ให้ถูกไฟล์:
 
-| ในโปรเจกต์ Apps Script สร้างไฟล์ชื่อ | เอาเนื้อหาจาก |
-|---|---|
-| `Code.gs` (มีอยู่แล้ว วางทับได้เลย) | `src/Code.gs` |
-| `Index.html` (กด **+ → HTML**) | `src/Index.html` |
-| `Stylesheet.html` (กด **+ → HTML**) | `src/Stylesheet.html` |
-| `JavaScript.html` (กด **+ → HTML**) | `src/JavaScript.html` |
-| `Icons.html` (กด **+ → HTML**) | `src/Icons.html` |
+| ในโปรเจกต์ Apps Script | ชนิดไฟล์ | เอาเนื้อหาจาก | ต้องขึ้นต้นด้วย |
+|---|---|---|---|
+| `Code.gs` (มีอยู่แล้ว วางทับ) | Script (.gs) | `src/Code.gs` | `/** * Rent-home Web App` |
+| `Index.html` (กด **+ → HTML**) | HTML | `src/Index.html` | `<!DOCTYPE html>` |
 
-> เวลาสร้างไฟล์ HTML ให้ตั้งชื่อว่า `Index`, `Stylesheet`, `JavaScript`, `Icons` (ไม่ต้องพิมพ์ `.html`)
+> ⚠️ **สำคัญมาก:** ไฟล์ `Index` ต้องขึ้นต้นด้วย `<!DOCTYPE html>` เท่านั้น
+> ถ้าเปิดเว็บแล้วเห็น **โค้ดตัวหนังสือ** (`/** * Rent-home...`) แปลว่าเผลอวางเนื้อหา `Code.gs` ลงในไฟล์ `Index` — ให้ลบแล้ววางเนื้อหา `src/Index.html` ให้ถูก
+>
+> ลบไฟล์ HTML เดิม (`Stylesheet`, `JavaScript`, `Icons`) ที่เคยสร้างออกได้เลย — ตอนนี้รวมไว้ใน `Index.html` หมดแล้ว
 
 ### 3) ตรวจการตั้งค่า (ไฟล์ `Code.gs` ด้านบนสุด)
 ```javascript
