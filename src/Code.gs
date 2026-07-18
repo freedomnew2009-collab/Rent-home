@@ -11,10 +11,15 @@
  *  การตั้งค่า (แก้ได้ตามต้องการ)
  *  ========================================================================= */
 
-// รหัสสเปรดชีต (จาก URL: .../d/<ID>/edit)
-//   - จำเป็นสำหรับสคริปต์แบบ standalone ที่ deploy ผ่าน clasp
-//   - ถ้าเว้นว่าง จะใช้สเปรดชีตที่ผูกกับสคริปต์ (กรณีติดตั้งผ่าน Extensions → Apps Script)
-var SPREADSHEET_ID = 'REDACTED';
+// ⚙️ รหัสส่วนตัว (SPREADSHEET_ID / DRIVE_FOLDER_ID) เก็บใน "Script Properties"
+//    ไม่ฝังในโค้ด เพื่อให้เปิด repo เป็น public ได้อย่างปลอดภัย
+//    ตั้งค่าที่: Apps Script → ⚙️ Project Settings → Script Properties → Add
+//      SPREADSHEET_ID = รหัสสเปรดชีต (จาก URL .../d/<ID>/edit)
+//      DRIVE_FOLDER_ID = รหัสโฟลเดอร์เก็บสลิป (จาก URL โฟลเดอร์)  [ไม่ใส่ก็ได้]
+//    อ่านค่าผ่านฟังก์ชัน prop_() ด้านล่าง
+function prop_(key) {
+  return (PropertiesService.getScriptProperties().getProperty(key) || '').trim();
+}
 
 // ชื่อชีต (แท็บ) ที่จะบันทึกข้อมูล ถ้าไม่พบจะใช้ชีตแรกของไฟล์
 var SHEET_NAME = 'ข้อมูลหลัก';
@@ -22,10 +27,7 @@ var SHEET_NAME = 'ข้อมูลหลัก';
 // แถวที่เป็นหัวตาราง (เริ่มนับจาก 1)
 var HEADER_ROW = 2;
 
-// โฟลเดอร์ใน Google Drive สำหรับเก็บรูปสลิป
-//   - ตั้งเป็นโฟลเดอร์เดิมที่เก็บสลิปอยู่แล้ว เพื่อให้ไฟล์ใหม่ไปรวมกับของเก่า
-//   - ถ้าเว้นว่าง จะสร้าง/ใช้โฟลเดอร์ชื่อ SLIP_FOLDER_NAME ใน Drive ของคุณอัตโนมัติ
-var DRIVE_FOLDER_ID = 'REDACTED';
+// ถ้าไม่ได้ตั้ง DRIVE_FOLDER_ID จะสร้าง/ใช้โฟลเดอร์ชื่อนี้ใน Drive อัตโนมัติ
 var SLIP_FOLDER_NAME = 'Rent-home Slips';
 
 /**
@@ -127,9 +129,11 @@ function include(filename) {
  *  ========================================================================= */
 
 function getSheet_() {
-  var ss = SPREADSHEET_ID
-    ? SpreadsheetApp.openById(SPREADSHEET_ID)
-    : SpreadsheetApp.getActiveSpreadsheet();
+  var id = prop_('SPREADSHEET_ID');
+  var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('ยังไม่ได้ตั้งค่า SPREADSHEET_ID — ไปที่ Apps Script → Project Settings → Script Properties แล้วเพิ่ม SPREADSHEET_ID');
+  }
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.getSheets()[0];
   return sheet;
@@ -285,8 +289,9 @@ function applyNumberFormats_(sheet, row, map) {
  *  ========================================================================= */
 
 function getSlipFolder_() {
-  if (DRIVE_FOLDER_ID) {
-    return DriveApp.getFolderById(DRIVE_FOLDER_ID);
+  var id = prop_('DRIVE_FOLDER_ID');
+  if (id) {
+    return DriveApp.getFolderById(id);
   }
   var it = DriveApp.getFoldersByName(SLIP_FOLDER_NAME);
   if (it.hasNext()) return it.next();
