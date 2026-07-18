@@ -22,7 +22,7 @@ function prop_(key) {
 }
 
 // ชื่อชีต (แท็บ) ที่จะบันทึกข้อมูล ถ้าไม่พบจะใช้ชีตแรกของไฟล์
-var SHEET_NAME = 'ข้อมูลหลัก';
+var SHEET_NAME = 'Database';
 
 // แถวที่เป็นหัวตาราง (เริ่มนับจาก 1)
 var HEADER_ROW = 2;
@@ -84,7 +84,7 @@ var FIELDS = [
   { key: 'extraAmount', header: 'ค่าผ่อนบ้านเพิ่มเติม',    defaultCol: 8,  label: 'จำนวนเงิน',    type: 'number', section: 'extra' },
   { key: 'extraSlip',   header: 'สลิปจ่ายบ้านเพิ่มเติม',   defaultCol: 9,  label: 'สลิปผ่อนบ้าน',  type: 'file',   section: 'extra' },
 
-  { key: 'installment', header: 'Column 10',              defaultCol: 10, label: 'งวดที่',       type: 'text',   section: 'info' },
+  { key: 'installment', header: 'งวดที่',                 defaultCol: 10, label: 'งวดที่',       type: 'text',   section: 'info' },
 
   { key: 'erDate',      header: 'วันที่เก็บ ER',          defaultCol: 11, label: 'วันที่เก็บ',   type: 'date',   section: 'er' },
   { key: 'erAmount',    header: 'Emergency',              defaultCol: 12, label: 'จำนวนเงิน',    type: 'number', section: 'er' },
@@ -137,6 +137,7 @@ function debugInfo_() {
     info.spreadsheetName = ss.getName();
     var reading = getSheet_();
     info.readingTab = reading.getName();
+    info.detectedHeaderRow = headerRow_(reading);
     info.recordsCounted = getRecords().length;   // งวดจริงที่นับได้จากแท็บที่อ่าน
     info.tabs = ss.getSheets().map(function (s) {
       return { name: s.getName(), rows: s.getLastRow(), cols: s.getLastColumn() };
@@ -171,9 +172,23 @@ function getSheet_() {
  * สร้างแผนที่ key -> ดัชนีคอลัมน์ (0-based)
  * โดยพยายามจับคู่จากชื่อหัวตารางก่อน ถ้าไม่พบใช้ defaultCol
  */
+/**
+ * หาแถวหัวตารางอัตโนมัติ โดยหาแถวที่ช่องแรกเป็น "วันที่จ่ายค่าเช่า"
+ * (ค้นใน 6 แถวแรก) — เผื่อหัวอยู่แถว 1 หรือ 2 ถ้าไม่เจอใช้ HEADER_ROW
+ */
+function headerRow_(sheet) {
+  var n = Math.min(6, Math.max(sheet.getLastRow(), 1));
+  var col1 = sheet.getRange(1, 1, n, 1).getValues();
+  for (var r = 0; r < col1.length; r++) {
+    var v = String(col1[r][0] == null ? '' : col1[r][0]).replace(/\s+/g, ' ').trim();
+    if (v === 'วันที่จ่ายค่าเช่า') return r + 1;
+  }
+  return HEADER_ROW;
+}
+
 function getColumnMap_(sheet) {
   var lastCol = Math.max(sheet.getLastColumn(), 1);
-  var headers = sheet.getRange(HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  var headers = sheet.getRange(headerRow_(sheet), 1, 1, lastCol).getValues()[0];
   var normalized = headers.map(function (h) {
     return String(h == null ? '' : h).replace(/\s+/g, ' ').trim();
   });
@@ -208,7 +223,7 @@ function getFormConfig() {
 function getRecords() {
   var sheet = getSheet_();
   var map = getColumnMap_(sheet);
-  var startRow = HEADER_ROW + 1;
+  var startRow = headerRow_(sheet) + 1;
   var lastRow = sheet.getLastRow();
   var records = [];
 
@@ -259,12 +274,13 @@ function saveRecord(payload) {
   lock.waitLock(30000); // กันการบันทึกพร้อมกันจนข้อมูลชนกัน
   try {
     var sheet = getSheet_();
+    var hr = headerRow_(sheet);
     var map = getColumnMap_(sheet);
     var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
 
-    var isEdit = payload.row && Number(payload.row) > HEADER_ROW;
+    var isEdit = payload.row && Number(payload.row) > hr;
     var targetRow = isEdit ? Number(payload.row) : sheet.getLastRow() + 1;
-    if (targetRow <= HEADER_ROW) targetRow = HEADER_ROW + 1;
+    if (targetRow <= hr) targetRow = hr + 1;
 
     // อ่านค่าเดิมของแถว (กรณีแก้ไข จะได้ไม่ลบข้อมูลที่ไม่ได้แตะ)
     var rowValues = new Array(width).fill('');
@@ -499,16 +515,17 @@ function saveAllocation(payload) {
     if (!cat) return { ok: false, error: 'หมวดไม่ถูกต้อง' };
 
     var sheet = getSheet_();
+    var hr = headerRow_(sheet);
     var map = getColumnMap_(sheet);
     var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
     var installment = String(payload.installment || '').trim();
 
     // หาแถวเป้าหมาย: ตาม row -> ตามงวด -> เพิ่มใหม่
     var targetRow = 0;
-    if (payload.row && Number(payload.row) > HEADER_ROW) {
+    if (payload.row && Number(payload.row) > hr) {
       targetRow = Number(payload.row);
     } else if (installment) {
-      var startRow = HEADER_ROW + 1;
+      var startRow = hr + 1;
       var lastRow = sheet.getLastRow();
       if (lastRow >= startRow) {
         var col = map.installment;
@@ -521,7 +538,7 @@ function saveAllocation(payload) {
       }
     }
     var isNew = !targetRow;
-    if (isNew) targetRow = Math.max(sheet.getLastRow() + 1, HEADER_ROW + 1);
+    if (isNew) targetRow = Math.max(sheet.getLastRow() + 1, hr + 1);
 
     var rowValues = new Array(width).fill('');
     if (!isNew && targetRow <= sheet.getLastRow()) {
