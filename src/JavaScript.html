@@ -100,19 +100,34 @@
     var file = e.target.files[0];
     if (!file) return;
 
-    if (!/^image\//.test(file.type)) { toast('กรุณาเลือกไฟล์รูปภาพ', 'err'); e.target.value = ''; return; }
+    // ปฏิเสธเฉพาะเมื่อ "รู้แน่ชัด" ว่าไม่ใช่รูป — บางมือถือ (Android) และไฟล์ HEIC
+    // ของ iPhone จะไม่ส่ง file.type มา (ค่าว่าง) ซึ่งยังเป็นรูปที่ใช้ได้
+    if (file.type && !/^image\//.test(file.type)) {
+      toast('กรุณาเลือกไฟล์รูปภาพ', 'err'); e.target.value = ''; return;
+    }
     if (file.size > 15 * 1024 * 1024) { toast('ไฟล์ใหญ่เกิน 15MB', 'err'); e.target.value = ''; return; }
 
+    var mime = file.type || guessMimeFromName(file.name);
     var reader = new FileReader();
     reader.onload = function () {
       var dataUrl = reader.result;
       var base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
-      FILES[key] = { name: file.name, mimeType: file.type, data: base64 };
+      FILES[key] = { name: file.name, mimeType: mime, data: base64 };
       var img = document.getElementById('img-' + key);
       img.src = dataUrl;
       document.getElementById('thumb-' + key).classList.add('show');
     };
     reader.readAsDataURL(file);
+  }
+
+  // เดาชนิดไฟล์จากนามสกุล เผื่อกรณีมือถือไม่ส่ง type มา
+  function guessMimeFromName(name) {
+    var n = String(name || '').toLowerCase();
+    if (/\.png$/.test(n)) return 'image/png';
+    if (/\.webp$/.test(n)) return 'image/webp';
+    if (/\.hei[cf]$/.test(n)) return 'image/heic';
+    if (/\.gif$/.test(n)) return 'image/gif';
+    return 'image/jpeg';
   }
 
   function clearFile(key) {
