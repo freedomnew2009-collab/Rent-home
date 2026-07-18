@@ -1,67 +1,136 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <base target="_top">
-  <meta charset="utf-8">
-  <?!= include('Stylesheet'); ?>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<?!= include('Stylesheet'); ?>
 </head>
 <body>
-  <div id="app">
-    <!-- แถบหัว -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="logo">🏠</span>
-        <div>
-          <h1>Rent-home</h1>
-          <p>บันทึกค่าใช้จ่ายบ้าน &amp; อัปโหลดสลิป</p>
-        </div>
-      </div>
-    </header>
-
-    <!-- แท็บ -->
-    <nav class="tabs">
-      <button class="tab active" data-tab="add">➕ เพิ่มรายการ</button>
-      <button class="tab" data-tab="list">📋 รายการทั้งหมด</button>
+<div class="app">
+  <header class="mast">
+    <div class="brandmark">
+      <span class="wm">Rent<span class="dot-i">·</span>home</span>
+      <span class="issue" data-issue>ฉบับรายเดือน</span>
+    </div>
+    <nav class="topnav">
+      <button class="tab" data-nav="dashboard" aria-current="page"><span class="ic" data-ic="dashboard"></span>จัดเงิน</button>
+      <button class="tab" data-nav="record"><span class="ic" data-ic="add"></span>บันทึก</button>
+      <button class="tab" data-nav="history"><span class="ic" data-ic="list"></span>ประวัติ</button>
+      <button class="tab" data-nav="summary"><span class="ic" data-ic="chart"></span>สรุป</button>
     </nav>
-
-    <!-- หน้าเพิ่ม/แก้ไขรายการ -->
-    <section id="tab-add" class="tab-panel active">
-      <div id="editBanner" class="edit-banner hidden">
-        ✏️ กำลังแก้ไขรายการ (แถวที่ <span id="editRow"></span>)
-        <button type="button" id="cancelEdit" class="link-btn">ยกเลิก</button>
+    <div class="mast-right">
+      <div class="monthpick">
+        <button class="iconbtn" data-month="prev" aria-label="เดือนก่อน"><span class="ic" data-ic="prev"></span></button>
+        <span class="mlabel" data-month-label>—</span>
+        <button class="iconbtn" data-month="next" aria-label="เดือนถัดไป"><span class="ic" data-ic="next"></span></button>
       </div>
+      <button class="iconbtn desk-only" data-action="refresh" aria-label="รีเฟรช"><span class="ic" data-ic="refresh"></span></button>
+    </div>
+  </header>
 
-      <form id="recordForm">
-        <div id="formSections"><!-- สร้างจาก JavaScript --></div>
-        <div class="actions">
-          <button type="submit" id="submitBtn" class="btn-primary">💾 บันทึกข้อมูล</button>
-          <button type="reset" class="btn-ghost">ล้างฟอร์ม</button>
+  <main class="screen">
+    <!-- ============ DASHBOARD ============ -->
+    <section data-panel="dashboard" class="dash">
+      <div class="col-summary">
+        <div class="lead">
+          <div class="eyebrow accent" data-income-eyebrow>ค่าเช่ารับเข้า</div>
+          <div class="amount" data-income>฿0</div>
+          <div class="meta" data-income-meta></div>
         </div>
-      </form>
+
+        <div class="alloc">
+          <div class="alloc-h">
+            <div class="eyebrow">การจัดสรร</div>
+            <div class="pct" data-alloc-pct>0% จัดสรรแล้ว</div>
+          </div>
+          <div class="bar" data-bar></div>
+          <div class="figs">
+            <div class="fig"><div class="k">จัดสรรแล้ว</div><div class="v" data-sum-allocated>฿0</div></div>
+            <div class="fig pending"><div class="k">รอจัดสรร</div><div class="v" data-sum-pending>฿0</div></div>
+            <div class="fig leftover"><div class="k">คงเหลือ</div><div class="v" data-sum-leftover>฿0</div></div>
+          </div>
+        </div>
+
+        <div class="alert hide" data-alert>
+          <span class="ic" data-ic="warning"></span>
+          <div class="a-body"></div>
+        </div>
+      </div>
+
+      <div class="col-ledger">
+        <div class="ledger">
+          <div class="ledger-h"><div class="eyebrow">จัดสรรไปที่ไหน</div><span class="hint">แตะปุ่มเพื่อบันทึก/แนบสลิป</span></div>
+          <div data-ledger><div class="empty-note">กำลังโหลด…</div></div>
+        </div>
+      </div>
     </section>
 
-    <!-- หน้ารายการทั้งหมด -->
-    <section id="tab-list" class="tab-panel">
-      <div id="summary" class="summary"></div>
-      <div class="list-toolbar">
-        <input id="searchBox" type="search" placeholder="🔍 ค้นหา (งวด / วันที่ / จำนวนเงิน)">
-        <button type="button" id="refreshBtn" class="btn-ghost small">↻ รีเฟรช</button>
-      </div>
-      <div id="recordList" class="record-list">
-        <div class="empty">กำลังโหลด…</div>
+    <!-- ============ RECORD ============ -->
+    <section data-panel="record" class="hide">
+      <div class="record">
+        <div class="eyebrow accent">บันทึกการโอน</div>
+        <h1 class="rec-title">บันทึก &amp; แนบสลิป</h1>
+        <p class="rec-sub">ระบบอัปโหลดสลิปเข้า Google Drive และเขียนกลับลง Google Sheet ให้อัตโนมัติ</p>
+        <form data-record-form onsubmit="return false">
+          <div class="grid">
+            <div class="field full">
+              <label>โอนออกให้รายการ</label>
+              <select class="finput" data-cat-select></select>
+              <div class="dest-note">โอนไปที่ <b data-dest-name>—</b></div>
+            </div>
+            <div class="field"><label>จำนวนเงิน (บาท)</label><input class="finput" type="number" step="0.01" inputmode="decimal" data-f="amount" placeholder="0.00"></div>
+            <div class="field"><label>วันที่โอน</label><input class="finput" type="date" data-f="date"></div>
+            <div class="field full"><label>งวด / เดือน</label><input class="finput" type="text" data-f="installment" placeholder="เช่น งวดที่ 19"></div>
+          </div>
+          <label class="drop" for="slip">
+            <span class="dic"><span class="ic" data-ic="camera"></span></span>
+            <div>
+              <div class="d-t" data-drop-name>ถ่าย / เลือกรูปสลิป</div>
+              <div class="d-s">อัปโหลดเข้า Google Drive · ไม่เกิน 15MB</div>
+            </div>
+          </label>
+          <input class="file-input" id="slip" type="file" accept="image/*" data-file-input>
+          <div class="preview" data-file-preview></div>
+          <div class="form-actions">
+            <button class="btn-primary-lg" data-action="submit-record"><span class="ic" data-ic="check"></span>บันทึก &amp; อัปโหลดสลิป</button>
+            <button class="btn-text" type="button" data-action="reset-record">ล้างฟอร์ม</button>
+          </div>
+        </form>
       </div>
     </section>
-  </div>
 
-  <!-- Toast แจ้งเตือน -->
-  <div id="toast" class="toast hidden"></div>
+    <!-- ============ HISTORY ============ -->
+    <section data-panel="history" class="hide">
+      <div class="hist">
+        <div class="eyebrow accent">ประวัติย้อนหลัง</div>
+        <h1 class="rec-title">ทุกเดือนที่บันทึก</h1>
+        <div data-history><div class="empty-note">กำลังโหลด…</div></div>
+      </div>
+    </section>
 
-  <!-- Overlay ตอนบันทึก -->
-  <div id="overlay" class="overlay hidden">
-    <div class="spinner"></div>
-    <p id="overlayText">กำลังบันทึก…</p>
-  </div>
+    <!-- ============ SUMMARY ============ -->
+    <section data-panel="summary" class="hide">
+      <div class="sum">
+        <div class="eyebrow accent">สรุปรวม</div>
+        <h1 class="rec-title">ยอดรวมทุกเดือน</h1>
+        <div data-summary><div class="empty-note">กำลังโหลด…</div></div>
+      </div>
+    </section>
+  </main>
 
-  <?!= include('JavaScript'); ?>
+  <nav class="tabbar">
+    <button class="tb" data-nav="dashboard" aria-current="page"><span class="ic" data-ic="dashboard"></span>จัดเงิน</button>
+    <button class="tb" data-nav="history"><span class="ic" data-ic="list"></span>ประวัติ</button>
+    <button class="tb mid" data-nav="record"><span class="ic" data-ic="add"></span>บันทึก</button>
+    <button class="tb" data-nav="summary"><span class="ic" data-ic="chart"></span>สรุป</button>
+    <button class="tb" data-action="refresh"><span class="ic" data-ic="refresh"></span>รีเฟรช</button>
+  </nav>
+</div>
+<div class="toast" data-toast></div>
+<div class="overlay hide" data-overlay><div class="spin"></div><p data-overlay-text>กำลังบันทึก…</p></div>
+
+<?!= include('Icons'); ?>
+<?!= include('JavaScript'); ?>
 </body>
 </html>

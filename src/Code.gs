@@ -46,6 +46,20 @@ var SLIP_NAMING = {
 };
 
 /**
+ * หมวดเงิน (โมเดล "กระแสเงิน" ของดีไซน์ Broadsheet)
+ *   income=true คือเงินรับเข้า (ค่าเช่า) — ที่เหลือคือการจัดสรรออก
+ *   แต่ละหมวดผูกกับคอลัมน์วันที่/จำนวน/สลิป ในชีตเดิม
+ */
+var CATEGORIES = [
+  { key: 'rent',   name: 'ค่าเช่ารับเข้า',      dest: 'บัญชีเจ้าของบ้าน',   dateKey: 'rentDate',   amtKey: 'rentAmount',   slipKey: 'rentSlip',   income: true, color: 'var(--color-accent-800)' },
+  { key: 'extra',  name: 'ผ่อนบ้านเพิ่มเติม',   dest: 'ธนาคาร',             dateKey: 'extraDate',  amtKey: 'extraAmount',  slipKey: 'extraSlip',  color: 'var(--color-accent-700)' },
+  { key: 'common', name: 'ค่าส่วนกลาง',         dest: 'นิติบุคคลหมู่บ้าน',   dateKey: 'commonDate', amtKey: 'commonAmount', slipKey: 'commonSlip', color: 'var(--color-accent-500)' },
+  { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: null,         color: 'var(--color-accent-400)' },
+  { key: 'gold',   name: 'ลงทุนทองคำ',          dest: 'ออมทองคำ',           dateKey: 'goldDate',   amtKey: 'goldAmount',   slipKey: null,         color: 'var(--color-accent-2-600)' },
+  { key: 'tax',    name: 'กันภาษี',             dest: 'บัญชีภาษี',          dateKey: 'taxDate',    amtKey: 'taxAmount',    slipKey: null,         color: 'var(--color-accent-2-400)' }
+];
+
+/**
  * นิยามฟิลด์ทั้งหมด — เป็นแหล่งข้อมูลกลางที่ทั้งฝั่งเซิร์ฟเวอร์และหน้าเว็บใช้ร่วมกัน
  *   key       : ชื่ออ้างอิงภายในโปรแกรม
  *   header    : ชื่อหัวคอลัมน์ในชีต (ใช้จับคู่คอลัมน์อัตโนมัติ)
@@ -358,3 +372,156 @@ function todayParts_() {
 }
 
 function pad2_(n) { return (n < 10 ? '0' : '') + n; }
+
+/** =========================================================================
+ *  API สำหรับดีไซน์ใหม่ (Broadsheet) — โมเดลกระแสเงิน
+ *  ========================================================================= */
+
+var THAI_MONTHS_ = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+function toNumber_(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+/** ป้ายเดือน-ปี (พ.ศ.) จากวันที่ dd/MM/yyyy เช่น "ก.ค. 2569" */
+function thaiMonthLabel_(dateStr, fallback) {
+  var p = parseThaiDate_(dateStr);
+  if (!p) return fallback || '';
+  return THAI_MONTHS_[p.m - 1] + ' ' + (p.y + 543);
+}
+
+/** คำนวณสถานะของการจัดสรรจากข้อมูลที่มีในแถว */
+function deriveStatus_(cat, amt, dateStr, slip) {
+  var hasAmt = amt > 0;
+  var hasDate = !!(dateStr && String(dateStr).trim());
+  var hasSlip = slip && /^https?:\/\//.test(String(slip));
+  if (!hasAmt && !hasDate && !hasSlip) return 'none';   // ยังไม่ตั้ง/ข้ามเดือนนี้
+  if (hasSlip) return 'paid';
+  if (cat.slipKey) {                       // หมวดที่ต้องมีสลิป
+    return (hasAmt && hasDate) ? 'waiting_slip' : 'waiting_transfer';
+  }
+  return (hasAmt && hasDate) ? 'paid' : 'waiting_transfer';   // หมวดที่ไม่มีช่องสลิป
+}
+
+/**
+ * ข้อมูลหน้า "จัดเงิน" (Dashboard) ของเดือนหนึ่ง
+ * @param {number} offset 0 = เดือนล่าสุด, 1 = ก่อนหน้า, ...
+ */
+function getDashboard(offset) {
+  offset = Number(offset) || 0;
+  var recs = getRecords();               // ใหม่สุดอยู่บน, เฉพาะแถวที่มีข้อมูล
+  if (!recs.length) return { hasData: false };
+  if (offset < 0) offset = 0;
+  if (offset > recs.length - 1) offset = recs.length - 1;
+
+  var r = recs[offset];
+  var incomeCat = CATEGORIES[0];         // rent
+  var income = toNumber_(r[incomeCat.amtKey]);
+
+  var allocations = [];
+  CATEGORIES.forEach(function (c) {
+    if (c.income) return;
+    var amt = toNumber_(r[c.amtKey]);
+    var date = r[c.dateKey] || '';
+    var slip = c.slipKey ? (r[c.slipKey] || '') : '';
+    allocations.push({
+      key: c.key, name: c.name, dest: c.dest, color: c.color,
+      amount: amt, date: date, slip: slip,
+      status: deriveStatus_(c, amt, date, slip)
+    });
+  });
+
+  return {
+    hasData: true,
+    offset: offset,
+    hasOlder: offset < recs.length - 1,
+    hasNewer: offset > 0,
+    row: r.row,
+    installment: r.installment || '',
+    monthLabel: thaiMonthLabel_(r[incomeCat.dateKey], r.installment || ''),
+    income: income,
+    incomeDate: r[incomeCat.dateKey] || '',
+    incomeSlip: r[incomeCat.slipKey] || '',
+    allocations: allocations
+  };
+}
+
+/**
+ * บันทึกการจัดสรร 1 หมวด ลงในแถวของงวดนั้น (อัปเดตคอลัมน์เฉพาะหมวด)
+ * ถ้าไม่พบงวด จะเพิ่มแถวใหม่
+ * @param {Object} payload {row?, category, amount, date, installment, slip?}
+ */
+function saveAllocation(payload) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var cat = null;
+    for (var i = 0; i < CATEGORIES.length; i++) {
+      if (CATEGORIES[i].key === payload.category) { cat = CATEGORIES[i]; break; }
+    }
+    if (!cat) return { ok: false, error: 'หมวดไม่ถูกต้อง' };
+
+    var sheet = getSheet_();
+    var map = getColumnMap_(sheet);
+    var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
+    var installment = String(payload.installment || '').trim();
+
+    // หาแถวเป้าหมาย: ตาม row -> ตามงวด -> เพิ่มใหม่
+    var targetRow = 0;
+    if (payload.row && Number(payload.row) > HEADER_ROW) {
+      targetRow = Number(payload.row);
+    } else if (installment) {
+      var startRow = HEADER_ROW + 1;
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= startRow) {
+        var col = map.installment;
+        var colVals = sheet.getRange(startRow, col + 1, lastRow - startRow + 1, 1).getValues();
+        for (var j = 0; j < colVals.length; j++) {
+          if (String(colVals[j][0]).replace(/\s+/g, ' ').trim() === installment) {
+            targetRow = startRow + j; break;
+          }
+        }
+      }
+    }
+    var isNew = !targetRow;
+    if (isNew) targetRow = Math.max(sheet.getLastRow() + 1, HEADER_ROW + 1);
+
+    var rowValues = new Array(width).fill('');
+    if (!isNew && targetRow <= sheet.getLastRow()) {
+      rowValues = sheet.getRange(targetRow, 1, 1, width).getValues()[0];
+    }
+
+    if (installment) rowValues[map.installment] = installment;
+    if (payload.date) rowValues[map[cat.dateKey]] = String(payload.date);
+    if (payload.amount !== '' && payload.amount !== null && payload.amount !== undefined) {
+      rowValues[map[cat.amtKey]] = Number(payload.amount);
+    }
+    if (payload.slip && payload.slip.data && cat.slipKey) {
+      var vals = {}; vals[cat.dateKey] = payload.date || '';
+      rowValues[map[cat.slipKey]] = uploadFileToDrive_(payload.slip, cat.slipKey, vals);
+    }
+
+    sheet.getRange(targetRow, 1, 1, width).setValues([rowValues]);
+    applyNumberFormats_(sheet, targetRow, map);
+
+    return { ok: true, row: targetRow, isNew: isNew };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** รายชื่อหมวด (ให้หน้าเว็บใช้สร้างฟอร์ม/ประวัติ/สรุป) */
+function getCategories() {
+  return CATEGORIES.map(function (c) {
+    return {
+      key: c.key, name: c.name, dest: c.dest, color: c.color,
+      income: !!c.income, hasSlip: !!c.slipKey,
+      amtKey: c.amtKey, dateKey: c.dateKey, slipKey: c.slipKey
+    };
+  });
+}
