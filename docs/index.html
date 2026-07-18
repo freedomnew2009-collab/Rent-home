@@ -40,6 +40,12 @@
   .err{color:#ff90b1;font-size:13px;margin-top:12px;display:none}
   .link{color:#62c5ee;font-size:13px;display:inline-block;margin-top:16px;cursor:pointer;text-decoration:underline}
   [hidden]{display:none!important}
+  /* โหมดฝังแอปเต็มจอ (เปิดจากแอปที่ติดตั้งแล้ว) */
+  body.framed{display:block;padding:0}
+  body.framed .wrap{display:none}
+  .appframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#2d2b2b}
+  .fallback{position:fixed;right:10px;bottom:10px;z-index:10;background:rgba(45,43,43,.9);color:#cbd5d8;
+    font-size:12px;padding:8px 13px;border-radius:999px;border:1px solid #605d5d;text-decoration:none}
 </style>
 </head>
 <body>
@@ -114,6 +120,23 @@
 
   function goApp(url) { window.location.href = url; }
 
+  // ฝังแอปเต็มจอในตัวเปิดแอป (ไม่มีแถบ script.google.com)
+  function showAppFrame(url) {
+    document.body.classList.add('framed');
+    var f = document.createElement('iframe');
+    f.className = 'appframe';
+    f.setAttribute('allow', 'camera; microphone; clipboard-read; clipboard-write; fullscreen');
+    f.src = url;
+    document.body.appendChild(f);
+    // ปุ่มสำรอง เผื่อ Google บล็อกการฝัง (ช่องแอปว่าง) → เปิดแบบปกติได้ ไม่ค้าง
+    var fb = document.createElement('a');
+    fb.className = 'fallback';
+    fb.textContent = 'ช่องว่าง? แตะเปิดแบบปกติ';
+    fb.href = url;
+    fb.addEventListener('click', function (e) { e.preventDefault(); window.location.replace(url); });
+    document.body.appendChild(fb);
+  }
+
   // ตั้งค่าผ่าน ?u= ก็ได้
   var qp = new URLSearchParams(location.search).get('u');
   if (qp && valid(qp)) { localStorage.setItem(KEY, qp.trim()); history.replaceState(null, '', location.pathname); }
@@ -136,9 +159,8 @@
   if (!saved || !valid(saved)) {
     showSetup(saved || '');
   } else if (isStandalone) {
-    // เปิดจากแอปที่ติดตั้งแล้ว → เข้าแอปเลย
-    show('[data-loading]', true); $('[data-sub]').textContent = 'กำลังเปิด…';
-    goApp(saved);
+    // เปิดจากแอปที่ติดตั้งแล้ว → ฝังเต็มจอ (ไม่มีแถบ script.google.com)
+    showAppFrame(saved);
   } else {
     // เปิดในเบราว์เซอร์ → ให้ติดตั้ง/เปิดเอง (ไม่เด้งอัตโนมัติ จะได้ติดตั้งทัน)
     showLanding(saved);

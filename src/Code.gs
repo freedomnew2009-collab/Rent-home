@@ -116,6 +116,9 @@ function doGet(e) {
     .evaluate()
     .setTitle('Rent-home | บันทึกค่าใช้จ่ายบ้าน')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    // อนุญาตให้ฝังหน้านี้เป็น iframe จากโดเมนอื่น (ตัวเปิดแอป PWA บน GitHub Pages)
+    // เพื่อให้เปิดแบบเต็มจอได้ ไม่มีแถบ script.google.com ด้านบน
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .setFaviconUrl('https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico');
 }
 
@@ -191,13 +194,20 @@ function getRecords() {
     values.forEach(function (row, i) {
       var rec = { row: startRow + i };
 
-      // นับเฉพาะช่องที่แอปใช้จริง — กันแถวที่มีแต่ข้อความอื่น (เช่น "ดูสลิป")
-      // ในคอลัมน์ที่ไม่เกี่ยวข้อง มาโผล่เป็นรายการเปล่า ๆ วนซ้ำ
+      // นับเป็น "รายการจริง" เฉพาะแถวที่มี วันที่ หรือ จำนวนเงิน จริง ๆ
+      // กันแถวขยะที่มีแต่ข้อความ เช่น "ดูสลิป" หรือป้ายงวดลอย ๆ มาโผล่เป็นงวดปลอม
       var hasData = false;
       FIELDS.forEach(function (f) {
         var v = formatCellForClient_(row[map[f.key]], f.type);
         rec[f.key] = v;
-        if (String(v).trim() !== '') hasData = true;
+        if (!v) return;
+        if (f.type === 'date') {
+          if (/\d/.test(v)) hasData = true;                 // ช่องวันที่ที่มีตัวเลข = วันที่จริง
+        } else if (f.type === 'number') {
+          var s = String(v).replace(/[^0-9.\-]/g, '');
+          if (s !== '' && !isNaN(parseFloat(s))) hasData = true;   // ตัวเลขจริง (ไม่ใช่ "ดูสลิป")
+        }
+        // ช่อง text/file (งวด, ลิงก์สลิป, ข้อความ) ไม่ใช้ตัดสินว่าเป็นแถวจริง
       });
 
       if (hasData) records.push(rec);
