@@ -128,13 +128,10 @@
     f.setAttribute('allow', 'camera; microphone; clipboard-read; clipboard-write; fullscreen');
     f.src = url;
     document.body.appendChild(f);
-    // ปุ่มสำรอง เผื่อ Google บล็อกการฝัง (ช่องแอปว่าง) → เปิดแบบปกติได้ ไม่ค้าง
-    var fb = document.createElement('a');
-    fb.className = 'fallback';
-    fb.textContent = 'ช่องว่าง? แตะเปิดแบบปกติ';
-    fb.href = url;
-    fb.addEventListener('click', function (e) { e.preventDefault(); window.location.replace(url); });
-    document.body.appendChild(fb);
+    // เผื่อฝังไม่ได้จริง ๆ (ช่องว่างเกิน 9 วิ) ค่อยเปิดแบบปกติให้อัตโนมัติ ไม่ค้าง
+    var loaded = false;
+    f.addEventListener('load', function () { loaded = true; });
+    setTimeout(function () { if (!loaded) window.location.replace(url); }, 9000);
   }
 
   // ตั้งค่าผ่าน ?u= ก็ได้

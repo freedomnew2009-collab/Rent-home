@@ -194,20 +194,14 @@ function getRecords() {
     values.forEach(function (row, i) {
       var rec = { row: startRow + i };
 
-      // นับเป็น "รายการจริง" เฉพาะแถวที่มี วันที่ หรือ จำนวนเงิน จริง ๆ
-      // กันแถวขยะที่มีแต่ข้อความ เช่น "ดูสลิป" หรือป้ายงวดลอย ๆ มาโผล่เป็นงวดปลอม
+      // นับเป็น "งวดจริง" เฉพาะแถวที่มี "วันที่จ่ายจริง" อย่างน้อยหนึ่งช่อง
+      // กันทั้งแถวขยะ (เช่น "ดูสลิป") และแถวที่ตั้งจำนวนเงินไว้ล่วงหน้า/สูตร
+      // ที่ยังไม่ได้จ่ายจริง (ไม่มีวันที่) ไม่ให้นับเป็นงวด
       var hasData = false;
       FIELDS.forEach(function (f) {
         var v = formatCellForClient_(row[map[f.key]], f.type);
         rec[f.key] = v;
-        if (!v) return;
-        if (f.type === 'date') {
-          if (/\d/.test(v)) hasData = true;                 // ช่องวันที่ที่มีตัวเลข = วันที่จริง
-        } else if (f.type === 'number') {
-          var s = String(v).replace(/[^0-9.\-]/g, '');
-          if (s !== '' && !isNaN(parseFloat(s))) hasData = true;   // ตัวเลขจริง (ไม่ใช่ "ดูสลิป")
-        }
-        // ช่อง text/file (งวด, ลิงก์สลิป, ข้อความ) ไม่ใช้ตัดสินว่าเป็นแถวจริง
+        if (f.type === 'date' && v && /\d/.test(v)) hasData = true;
       });
 
       if (hasData) records.push(rec);

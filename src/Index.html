@@ -251,7 +251,6 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
   <header class="mast">
     <div class="brandmark">
       <span class="wm">Rent<span class="dot-i">·</span>home</span>
-      <span class="issue" data-issue>ฉบับรายเดือน</span>
     </div>
     <nav class="topnav">
       <button class="tab" data-nav="dashboard" aria-current="page"><span class="ic" data-ic="dashboard"></span>จัดเงิน</button>
@@ -438,7 +437,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
   function renderDashboard(d) {
     DASH = d;
     if (!d || !d.hasData) {
-      setText('[data-month-label]', '—'); setText('[data-issue]', 'ฉบับรายเดือน');
+      setText('[data-month-label]', '—');
       setText('[data-income]', '฿0'); setText('[data-income-eyebrow]', 'ค่าเช่ารับเข้า');
       q('[data-income-meta]').innerHTML = '<span style="font-style:italic">ยังไม่มีข้อมูล — เริ่มที่ปุ่ม “บันทึก”</span>';
       q('[data-bar]').innerHTML = '<span class="seg leftover" style="flex:1 1 0"></span>';
@@ -449,7 +448,6 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     }
     OFFSET = d.offset;
     setText('[data-month-label]', d.monthLabel || '—');
-    setText('[data-issue]', d.monthLabel ? ('ฉบับ ' + d.monthLabel) : 'ฉบับรายเดือน');
 
     // income lead
     setText('[data-income]', money(d.income));
