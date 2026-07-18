@@ -112,6 +112,12 @@ var SECTIONS = [
  *  ========================================================================= */
 
 function doGet(e) {
+  // โหมดตรวจสอบ: เปิด <exec-url>?debug=1 เพื่อดูว่ากำลังอ่านแท็บไหน + แต่ละแท็บมีกี่แถว
+  if (e && e.parameter && e.parameter.debug) {
+    return ContentService
+      .createTextOutput(JSON.stringify(debugInfo_(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Rent-home | บันทึกค่าใช้จ่ายบ้าน')
@@ -120,6 +126,25 @@ function doGet(e) {
     // เพื่อให้เปิดแบบเต็มจอได้ ไม่มีแถบ script.google.com ด้านบน
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .setFaviconUrl('https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico');
+}
+
+/** ข้อมูลตรวจสอบ: ชื่อสเปรดชีต, แท็บที่กำลังอ่าน, และทุกแท็บพร้อมจำนวนแถว/งวดจริง */
+function debugInfo_() {
+  var info = { SHEET_NAME: SHEET_NAME, HEADER_ROW: HEADER_ROW, hasSpreadsheetIdProp: !!prop_('SPREADSHEET_ID') };
+  try {
+    var id = prop_('SPREADSHEET_ID');
+    var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+    info.spreadsheetName = ss.getName();
+    var reading = getSheet_();
+    info.readingTab = reading.getName();
+    info.recordsCounted = getRecords().length;   // งวดจริงที่นับได้จากแท็บที่อ่าน
+    info.tabs = ss.getSheets().map(function (s) {
+      return { name: s.getName(), rows: s.getLastRow(), cols: s.getLastColumn() };
+    });
+  } catch (err) {
+    info.error = String(err && err.message ? err.message : err);
+  }
+  return info;
 }
 
 /** ให้ HTML ไฟล์อื่น include เข้ามาได้ (เช่น CSS/JS) */
