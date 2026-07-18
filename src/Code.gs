@@ -171,16 +171,18 @@ function getRecords() {
     var values = sheet.getRange(startRow, 1, lastRow - startRow + 1, width).getValues();
 
     values.forEach(function (row, i) {
-      // ข้ามแถวว่าง
-      var hasData = row.some(function (c) { return String(c).trim() !== ''; });
-      if (!hasData) return;
-
       var rec = { row: startRow + i };
+
+      // นับเฉพาะช่องที่แอปใช้จริง — กันแถวที่มีแต่ข้อความอื่น (เช่น "ดูสลิป")
+      // ในคอลัมน์ที่ไม่เกี่ยวข้อง มาโผล่เป็นรายการเปล่า ๆ วนซ้ำ
+      var hasData = false;
       FIELDS.forEach(function (f) {
-        var v = row[map[f.key]];
-        rec[f.key] = formatCellForClient_(v, f.type);
+        var v = formatCellForClient_(row[map[f.key]], f.type);
+        rec[f.key] = v;
+        if (String(v).trim() !== '') hasData = true;
       });
-      records.push(rec);
+
+      if (hasData) records.push(rec);
     });
   }
 
