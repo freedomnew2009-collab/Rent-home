@@ -140,10 +140,15 @@ function debugInfo_() {
     info.detectedHeaderRow = headerRow_(reading);
     var recs = getRecords();
     info.recordsCounted = recs.length;           // งวดจริงที่นับได้จากแท็บที่อ่าน
-    // ตัวอย่างแถวที่นับได้ (แถวในชีต : งวด | วันที่ค่าเช่า | จำนวนค่าเช่า) เพื่อดูว่ามีอะไรปน
-    info.sample = recs.map(function (r) {
-      return r.row + ': [' + (r.installment || '-') + '] rent=' + (r.rentDate || '-') + '/' + (r.rentAmount || '-');
-    });
+    if (recs.length) {
+      var rowsList = recs.map(function (r) { return r.row; });
+      info.rowRange = Math.min.apply(null, rowsList) + '–' + Math.max.apply(null, rowsList);
+      info.withNgwodLabel = recs.filter(function (r) { return /งวดที่/.test(String(r.installment || '')); }).length;
+      info.withRentAmount = recs.filter(function (r) { return String(r.rentAmount || '').replace(/[^0-9.]/g, '') !== ''; }).length;
+      var line = function (r) { return r.row + ': [' + (r.installment || '-') + '] ' + (r.rentDate || '-') + ' / ' + (r.rentAmount || '-') + ' / common:' + (r.commonAmount || '-'); };
+      info.firstRows = recs.slice(-8).reverse().map(line);  // แถวบนสุดของชีต (เก่าสุด)
+      info.lastRows = recs.slice(0, 8).map(line);           // แถวล่างสุดของชีต (ใหม่สุด)
+    }
     info.tabs = ss.getSheets().map(function (s) {
       return { name: s.getName(), rows: s.getLastRow(), cols: s.getLastColumn() };
     });
