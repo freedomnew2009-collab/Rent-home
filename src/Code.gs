@@ -138,7 +138,12 @@ function debugInfo_() {
     var reading = getSheet_();
     info.readingTab = reading.getName();
     info.detectedHeaderRow = headerRow_(reading);
-    info.recordsCounted = getRecords().length;   // งวดจริงที่นับได้จากแท็บที่อ่าน
+    var recs = getRecords();
+    info.recordsCounted = recs.length;           // งวดจริงที่นับได้จากแท็บที่อ่าน
+    // ตัวอย่างแถวที่นับได้ (แถวในชีต : งวด | วันที่ค่าเช่า | จำนวนค่าเช่า) เพื่อดูว่ามีอะไรปน
+    info.sample = recs.map(function (r) {
+      return r.row + ': [' + (r.installment || '-') + '] rent=' + (r.rentDate || '-') + '/' + (r.rentAmount || '-');
+    });
     info.tabs = ss.getSheets().map(function (s) {
       return { name: s.getName(), rows: s.getLastRow(), cols: s.getLastColumn() };
     });
