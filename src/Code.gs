@@ -55,7 +55,8 @@ var SLIP_NAMING = {
 var CATEGORIES = [
   { key: 'rent',   name: 'ค่าเช่ารับเข้า',      dest: 'บัญชีเจ้าของบ้าน',   dateKey: 'rentDate',   amtKey: 'rentAmount',   slipKey: 'rentSlip',   income: true, color: 'var(--color-accent-800)' },
   // หมวดคงที่: ตัดจากเงินเดือนอัตโนมัติทุกเดือน ไม่ต้องบันทึก/แนบสลิป (virtual — ไม่ผูกคอลัมน์)
-  { key: 'loan',   name: 'ค่าผ่อนบ้าน',         dest: 'ตัดจากเงินเดือน',    fixed: true, defaultAmount: 3000, color: 'var(--color-accent-600)' },
+  //   startYM = เดือนเริ่มผ่อน (yyyy-mm, ค.ศ.) — เริ่ม ม.ค. 2025
+  { key: 'loan',   name: 'ค่าผ่อนบ้าน',         dest: 'ตัดจากเงินเดือน',    fixed: true, defaultAmount: 3000, startYM: '2025-01', color: 'var(--color-accent-600)' },
   { key: 'extra',  name: 'ผ่อนบ้านเพิ่มเติม',   dest: 'ธนาคาร',             dateKey: 'extraDate',  amtKey: 'extraAmount',  slipKey: 'extraSlip',  color: 'var(--color-accent-700)' },
   { key: 'common', name: 'ค่าส่วนกลาง',         dest: 'นิติบุคคลหมู่บ้าน',   dateKey: 'commonDate', amtKey: 'commonAmount', slipKey: 'commonSlip', color: 'var(--color-accent-500)' },
   { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: null,         color: 'var(--color-accent-400)' },
@@ -448,6 +449,12 @@ function toNumber_(v) {
   return isNaN(n) ? 0 : n;
 }
 
+/** yyyy-mm (ค.ศ.) จากวันที่ dd/MM/yyyy เช่น "10/02/2026" -> "2026-02" */
+function ymOf_(dateStr) {
+  var p = parseThaiDate_(dateStr);
+  return p ? (p.y + '-' + pad2_(p.m)) : '';
+}
+
 /** ป้ายเดือน-ปี (พ.ศ.) จากวันที่ dd/MM/yyyy เช่น "ก.ค. 2569" */
 function thaiMonthLabel_(dateStr, fallback) {
   var p = parseThaiDate_(dateStr);
@@ -487,6 +494,8 @@ function getDashboard(offset) {
   CATEGORIES.forEach(function (c) {
     if (c.income) return;
     if (c.fixed) {   // ค่าคงที่ ตัดจากเงินเดือนอัตโนมัติ ไม่ต้องบันทึก
+      var ym = ymOf_(r[incomeCat.dateKey]);            // เดือนของแถวนี้ (yyyy-mm)
+      if (c.startYM && ym && ym < c.startYM) return;   // เดือนก่อนเริ่มผ่อน — ไม่แสดง
       allocations.push({
         key: c.key, name: c.name, dest: c.dest, color: c.color,
         amount: c.defaultAmount || 0, date: '', slip: '', status: 'auto', fixed: true
@@ -591,7 +600,7 @@ function getCategories() {
     return {
       key: c.key, name: c.name, dest: c.dest, color: c.color,
       income: !!c.income, hasSlip: !!c.slipKey, fixed: !!c.fixed, defaultAmount: c.defaultAmount || 0,
-      amtKey: c.amtKey, dateKey: c.dateKey, slipKey: c.slipKey
+      startYM: c.startYM || '', amtKey: c.amtKey, dateKey: c.dateKey, slipKey: c.slipKey
     };
   });
 }

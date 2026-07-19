@@ -623,10 +623,15 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       recs.forEach(function (r) {
         income += num(r.rentAmount);
         CATS.forEach(function (c) {
-          if (c.income) return;
-          if (c.fixed) totals[c.key] += (c.defaultAmount || 0);   // คงที่ทุกเดือน (เช่น ค่าผ่อนบ้าน 3,000)
-          else totals[c.key] += num(r[c.amtKey]);
+          if (c.income || c.fixed) return;   // fixed คิดแยกด้านล่าง
+          totals[c.key] += num(r[c.amtKey]);
         });
+      });
+      // หมวดคงที่ (เช่น ค่าผ่อนบ้าน): นับตามจำนวนเดือนตั้งแต่ startYM ถึงเดือนล่าสุด
+      var latestYM = ymC(recs[0].rentDate);   // recs[0] = เดือนใหม่สุด
+      CATS.forEach(function (c) {
+        if (!c.fixed) return;
+        totals[c.key] = monthSpanC(c.startYM || latestYM, latestYM) * (c.defaultAmount || 0);
       });
       var out = 0, rows = '';
       CATS.forEach(function (c) {
@@ -642,6 +647,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     }).catch(function (e) { box.innerHTML = '<div class="empty-note">โหลดไม่สำเร็จ: ' + esc(e.message) + '</div>'; });
   }
   function num(v) { if (!v) return 0; var n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; }
+  function ymC(th) { var p = String(th || '').split('/'); if (p.length !== 3 || p[2].length !== 4) return ''; return p[2] + '-' + p[1].padStart(2, '0'); }
+  function monthSpanC(a, b) { if (!a || !b) return 0; var pa = a.split('-'), pb = b.split('-'); var m = (parseInt(pb[0], 10) - parseInt(pa[0], 10)) * 12 + (parseInt(pb[1], 10) - parseInt(pa[1], 10)) + 1; return m > 0 ? m : 0; }
 
   /* ---------- panels / nav ---------- */
   function switchPanel(name) {
