@@ -44,8 +44,7 @@ var SLIP_NAMING = {
   rentSlip:     { prefix: 'Rent',     dateKey: 'rentDate',   calendar: 'greg',     granularity: 'day' },
   commonSlip:   { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'day' },
   extraSlip:    { prefix: 'Bank',     dateKey: 'extraDate',  calendar: 'greg',     granularity: 'day' },
-  juristicSlip: { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'month', suffix: 'เปลี่ยนนิติ' },
-  loanSlip:     { prefix: 'ผ่อนบ้าน', dateKey: 'loanDate',   calendar: 'greg',     granularity: 'day' }
+  juristicSlip: { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'month', suffix: 'เปลี่ยนนิติ' }
 };
 
 /**
@@ -55,7 +54,8 @@ var SLIP_NAMING = {
  */
 var CATEGORIES = [
   { key: 'rent',   name: 'ค่าเช่ารับเข้า',      dest: 'บัญชีเจ้าของบ้าน',   dateKey: 'rentDate',   amtKey: 'rentAmount',   slipKey: 'rentSlip',   income: true, color: 'var(--color-accent-800)' },
-  { key: 'loan',   name: 'ค่าผ่อนบ้าน',         dest: 'ธนาคาร',             dateKey: 'loanDate',   amtKey: 'loanAmount',   slipKey: 'loanSlip',   color: 'var(--color-accent-600)', defaultAmount: 3000 },
+  // หมวดคงที่: ตัดจากเงินเดือนอัตโนมัติทุกเดือน ไม่ต้องบันทึก/แนบสลิป (virtual — ไม่ผูกคอลัมน์)
+  { key: 'loan',   name: 'ค่าผ่อนบ้าน',         dest: 'ตัดจากเงินเดือน',    fixed: true, defaultAmount: 3000, color: 'var(--color-accent-600)' },
   { key: 'extra',  name: 'ผ่อนบ้านเพิ่มเติม',   dest: 'ธนาคาร',             dateKey: 'extraDate',  amtKey: 'extraAmount',  slipKey: 'extraSlip',  color: 'var(--color-accent-700)' },
   { key: 'common', name: 'ค่าส่วนกลาง',         dest: 'นิติบุคคลหมู่บ้าน',   dateKey: 'commonDate', amtKey: 'commonAmount', slipKey: 'commonSlip', color: 'var(--color-accent-500)' },
   { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: null,         color: 'var(--color-accent-400)' },
@@ -95,12 +95,7 @@ var FIELDS = [
   { key: 'goldAmount',  header: 'Gold now',               defaultCol: 14, label: 'จำนวนเงิน',    type: 'number', section: 'gold' },
 
   { key: 'taxDate',     header: 'วันที่เตรยมจ่ายภาษี',    defaultCol: 15, label: 'วันที่เตรียมจ่าย', type: 'date', section: 'tax' },
-  { key: 'taxAmount',   header: 'เงินจ่ายภาษี',           defaultCol: 16, label: 'จำนวนเงิน',    type: 'number', section: 'tax' },
-
-  // หมวดใหม่: ค่าผ่อนบ้าน (ประจำเดือน) — คอลัมน์ 17-19 (เพิ่มหัวให้อัตโนมัติ)
-  { key: 'loanDate',    header: 'วันที่จ่ายค่าผ่อนบ้าน',   defaultCol: 17, label: 'วันที่จ่าย',   type: 'date',   section: 'loan' },
-  { key: 'loanAmount',  header: 'ค่าผ่อนบ้าน',            defaultCol: 18, label: 'จำนวนเงิน',    type: 'number', section: 'loan' },
-  { key: 'loanSlip',    header: 'สลิปค่าผ่อนบ้าน',         defaultCol: 19, label: 'สลิปค่าผ่อนบ้าน', type: 'file',  section: 'loan' }
+  { key: 'taxAmount',   header: 'เงินจ่ายภาษี',           defaultCol: 16, label: 'จำนวนเงิน',    type: 'number', section: 'tax' }
 ];
 
 // ข้อมูลของแต่ละกลุ่ม (ใช้แสดงหัวข้อ/ไอคอนบนหน้าเว็บ)
@@ -109,7 +104,6 @@ var SECTIONS = [
   { key: 'rent',   title: 'ค่าเช่า',            icon: '🏠' },
   { key: 'common', title: 'ค่าส่วนกลาง',        icon: '🏢' },
   { key: 'extra',  title: 'ผ่อนบ้านเพิ่มเติม',   icon: '🏦' },
-  { key: 'loan',   title: 'ค่าผ่อนบ้าน',         icon: '🏘️' },
   { key: 'er',     title: 'เงินฉุกเฉิน (ER)',    icon: '🚨' },
   { key: 'gold',   title: 'ลงทุนทองคำ (Gold Now)', icon: '🪙' },
   { key: 'tax',    title: 'ภาษี',              icon: '🧾' }
@@ -337,28 +331,9 @@ function saveRecord(payload) {
   }
 }
 
-/**
- * เพิ่มหัวคอลัมน์ของหมวดใหม่ (ค่าผ่อนบ้าน) ลงในแถวหัวตาราง ถ้ายังไม่มี
- * เขียนเฉพาะเมื่อช่องหัวว่าง — ไม่ทับข้อมูลเดิม
- */
-function ensureExtraHeaders_(sheet, hr) {
-  var need = [
-    { key: 'loanDate',   header: 'วันที่จ่ายค่าผ่อนบ้าน' },
-    { key: 'loanAmount', header: 'ค่าผ่อนบ้าน' },
-    { key: 'loanSlip',   header: 'สลิปค่าผ่อนบ้าน' }
-  ];
-  need.forEach(function (n) {
-    var f = null;
-    for (var i = 0; i < FIELDS.length; i++) { if (FIELDS[i].key === n.key) { f = FIELDS[i]; break; } }
-    if (!f) return;
-    var cell = sheet.getRange(hr, f.defaultCol + 1);
-    if (String(cell.getValue()).replace(/\s+/g, ' ').trim() === '') cell.setValue(n.header);
-  });
-}
-
 /** จัดรูปแบบสกุลเงินให้คอลัมน์จำนวนเงินที่เป็นเงินบาท */
 function applyNumberFormats_(sheet, row, map) {
-  var bahtKeys = ['rentAmount', 'commonAmount', 'extraAmount', 'loanAmount'];
+  var bahtKeys = ['rentAmount', 'commonAmount', 'extraAmount'];
   bahtKeys.forEach(function (k) {
     if (map[k] != null) {
       sheet.getRange(row, map[k] + 1).setNumberFormat('฿#,##0.00');
@@ -511,8 +486,14 @@ function getDashboard(offset) {
   var allocations = [];
   CATEGORIES.forEach(function (c) {
     if (c.income) return;
+    if (c.fixed) {   // ค่าคงที่ ตัดจากเงินเดือนอัตโนมัติ ไม่ต้องบันทึก
+      allocations.push({
+        key: c.key, name: c.name, dest: c.dest, color: c.color,
+        amount: c.defaultAmount || 0, date: '', slip: '', status: 'auto', fixed: true
+      });
+      return;
+    }
     var amt = toNumber_(r[c.amtKey]);
-    if (!amt && c.defaultAmount) amt = c.defaultAmount;   // ยอดประจำเดือน (เช่น ค่าผ่อนบ้าน 3,000)
     var date = r[c.dateKey] || '';
     var slip = c.slipKey ? (r[c.slipKey] || '') : '';
     allocations.push({
@@ -554,7 +535,6 @@ function saveAllocation(payload) {
 
     var sheet = getSheet_();
     var hr = headerRow_(sheet);
-    ensureExtraHeaders_(sheet, hr);   // เพิ่มหัวคอลัมน์ค่าผ่อนบ้านถ้ายังไม่มี
     var map = getColumnMap_(sheet);
     var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
     var installment = String(payload.installment || '').trim();
@@ -610,7 +590,7 @@ function getCategories() {
   return CATEGORIES.map(function (c) {
     return {
       key: c.key, name: c.name, dest: c.dest, color: c.color,
-      income: !!c.income, hasSlip: !!c.slipKey, defaultAmount: c.defaultAmount || 0,
+      income: !!c.income, hasSlip: !!c.slipKey, fixed: !!c.fixed, defaultAmount: c.defaultAmount || 0,
       amtKey: c.amtKey, dateKey: c.dateKey, slipKey: c.slipKey
     };
   });

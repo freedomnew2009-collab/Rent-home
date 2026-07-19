@@ -409,7 +409,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     waiting_slip:     { cls: 'stat slip',     ic: 'paperclip', label: 'รอสลิป' },
     waiting_transfer: { cls: 'stat transfer', ic: 'arrow',     label: 'รอโอน' },
     overdue:          { cls: 'stat overdue',  ic: 'warning',   label: 'เกินกำหนด' },
-    none:             { cls: 'stat paid',     ic: '',          label: 'ยังไม่ตั้ง' }
+    none:             { cls: 'stat paid',     ic: '',          label: 'ยังไม่ตั้ง' },
+    auto:             { cls: 'stat paid',     ic: 'check',     label: 'ตัดจากเงินเดือน' }
   };
   function statHTML(st) {
     var s = STAT[st] || STAT.waiting_transfer;
@@ -417,6 +418,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     return '<span class="' + s.cls + '">' + icon + s.label + '</span>';
   }
   function actHTML(a) {
+    if (a.status === 'auto') return '';   // ตัดอัตโนมัติ ไม่มีปุ่ม
     if (a.status === 'paid') {
       if (isUrl(a.slip)) return '<button class="act link" data-open-slip="' + esc(a.slip) + '"><span class="ic" data-ic="external"></span>ดูสลิป</button>';
       return '<button class="act link" data-open-record="' + a.key + '"><span class="ic" data-ic="check"></span>แก้ไข</button>';
@@ -463,7 +465,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var pendItems = [];
     d.allocations.forEach(function (a) {
       total += a.amount;
-      if (a.status === 'paid' || a.status === 'waiting_slip') allocated += a.amount;
+      if (a.status === 'paid' || a.status === 'waiting_slip' || a.status === 'auto') allocated += a.amount;
       else if (a.status === 'waiting_transfer' || a.status === 'overdue') { pending += a.amount; pendItems.push(a); }
       // status 'none' (ยังไม่ตั้ง) — ไม่นับเป็นจัดสรร/รอจัดสรร
     });
@@ -473,7 +475,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var segs = '';
     d.allocations.forEach(function (a) {
       if (a.amount <= 0) return;
-      var pend = !(a.status === 'paid' || a.status === 'waiting_slip');
+      var pend = !(a.status === 'paid' || a.status === 'waiting_slip' || a.status === 'auto');
       segs += '<span class="seg' + (pend ? ' pending' : '') + '" style="flex:' + a.amount + ' 1 0; background:' + a.color + '"></span>';
     });
     if (leftover > 0) segs += '<span class="seg leftover" style="flex:' + leftover + ' 1 0"></span>';
@@ -499,17 +501,22 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
   }
 
   function entryHTML(a) {
+    var dest = (a.status === 'auto')
+      ? '<span class="to">' + esc(a.dest) + '</span> · ทุกเดือน'
+      : 'โอนไป <span class="to">' + esc(a.dest) + '</span>' + (a.date ? ' · ' + esc(a.date) : '');
     return '<div class="entry" data-task="' + a.key + '" data-status="' + a.status + '">' +
       '<div class="top"><div class="e-name"><span class="dot" style="background:' + a.color + '"></span>' + esc(a.name) + '</div>' +
       '<div class="e-amt">' + (a.amount > 0 ? money(a.amount) : '—') + '</div></div>' +
-      '<div class="bottom"><div class="e-dest">โอนไป <span class="to">' + esc(a.dest) + '</span>' + (a.date ? ' · ' + esc(a.date) : '') + '</div>' +
+      '<div class="bottom"><div class="e-dest">' + dest + '</div>' +
       '<div class="e-side"><span>' + statHTML(a.status) + '</span><span>' + actHTML(a) + '</span></div></div></div>';
   }
 
   /* ---------- record form ---------- */
   function buildCatSelect() {
     var sel = q('[data-cat-select]');
-    sel.innerHTML = CATS.map(function (c) { return '<option value="' + c.key + '">' + esc(c.name) + '</option>'; }).join('');
+    // ไม่รวมหมวดคงที่ (fixed) เช่น ค่าผ่อนบ้าน ที่ตัดอัตโนมัติ — ไม่ต้องบันทึก
+    sel.innerHTML = CATS.filter(function (c) { return !c.fixed; })
+      .map(function (c) { return '<option value="' + c.key + '">' + esc(c.name) + '</option>'; }).join('');
     updateDest();
   }
   function updateDest() {
@@ -593,6 +600,10 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var lines = [];
     CATS.forEach(function (c) {
       if (c.income) return;
+      if (c.fixed) {   // คงที่ทุกเดือน (ตัดจากเงินเดือน)
+        lines.push('<div class="hm-line"><span>' + esc(c.name) + '</span><span class="v">' + money(c.defaultAmount || 0) + ' · ตัดจากเงินเดือน</span></div>');
+        return;
+      }
       var amt = num(r[c.amtKey]); var date = r[c.dateKey]; var slip = c.hasSlip ? r[c.slipKey] : '';
       if (!amt && !date && !isUrl(slip)) return;
       var right = (amt ? money(amt) : '—') + (date ? ' · ' + esc(date) : '') + (isUrl(slip) ? ' · <a href="' + esc(slip) + '" target="_blank" rel="noopener">ดูสลิป</a>' : '');
@@ -611,7 +622,11 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       var income = 0, totals = {}; CATS.forEach(function (c) { totals[c.key] = 0; });
       recs.forEach(function (r) {
         income += num(r.rentAmount);
-        CATS.forEach(function (c) { if (!c.income) totals[c.key] += num(r[c.amtKey]); });
+        CATS.forEach(function (c) {
+          if (c.income) return;
+          if (c.fixed) totals[c.key] += (c.defaultAmount || 0);   // คงที่ทุกเดือน (เช่น ค่าผ่อนบ้าน 3,000)
+          else totals[c.key] += num(r[c.amtKey]);
+        });
       });
       var out = 0, rows = '';
       CATS.forEach(function (c) {
