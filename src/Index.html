@@ -515,6 +515,9 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
   function updateDest() {
     var sel = q('[data-cat-select]'); var c = CATMAP[sel.value];
     setText('[data-dest-name]', c ? c.dest : '—');
+    // เติมยอดเริ่มต้นประจำเดือน (เช่น ค่าผ่อนบ้าน 3,000) ถ้าช่องจำนวนเงินยังว่าง
+    var amt = q('[data-f="amount"]');
+    if (c && c.defaultAmount && amt && !amt.value) amt.value = c.defaultAmount;
   }
   function openRecord(catKey) {
     switchPanel('record');
