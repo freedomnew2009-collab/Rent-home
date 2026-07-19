@@ -586,3 +586,58 @@ function getCategories() {
     };
   });
 }
+
+/** =========================================================================
+ *  เครื่องมือล้างแถวซ้ำ (รันครั้งเดียวจาก Apps Script editor)
+ *  ========================================================================= */
+
+/**
+ * อ่านแท็บที่ตั้งไว้ (Database) แล้วเก็บ "งวดละ 1 แถว" โดยใช้ วันที่จ่ายค่าเช่า เป็นตัวจับซ้ำ
+ * เลือกแถวที่มีข้อมูลครบที่สุดของแต่ละวันที่ แล้วเขียนผลลงแท็บใหม่ "Database (ไม่ซ้ำ)"
+ * ปลอดภัย: ไม่ลบ/ไม่แก้ข้อมูลเดิม — ให้เปิดแท็บใหม่ตรวจก่อน
+ * วิธีใช้: ใน Apps Script เลือกฟังก์ชัน dedupeToNewTab แล้วกด Run (ครั้งเดียว)
+ */
+function dedupeToNewTab() {
+  var sheet = getSheet_();
+  var hr = headerRow_(sheet);
+  var map = getColumnMap_(sheet);
+  var lastRow = sheet.getLastRow();
+  var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
+  if (lastRow <= hr) return 'ไม่มีข้อมูลให้ล้าง';
+
+  var headerVals = sheet.getRange(hr, 1, 1, width).getValues()[0];
+  var rows = sheet.getRange(hr + 1, 1, lastRow - hr, width).getValues();
+
+  var best = {}, order = [];
+  rows.forEach(function (row) {
+    var rd = row[map.rentDate];
+    var key = (rd instanceof Date)
+      ? Utilities.formatDate(rd, Session.getScriptTimeZone(), 'dd/MM/yyyy')
+      : String(rd == null ? '' : rd).trim();
+    if (!key || !/\d/.test(key)) return;   // ข้ามแถวที่ไม่มีวันที่จ่ายค่าเช่า
+    var score = row.filter(function (c) { return String(c).trim() !== ''; }).length;
+    if (!best[key]) { order.push(key); best[key] = { score: -1, row: row }; }
+    if (score > best[key].score) best[key] = { score: score, row: row };
+  });
+
+  var out = order.map(function (k) { return best[k].row; });
+  out.sort(function (a, b) { return dateSortKey_(a[map.rentDate]) - dateSortKey_(b[map.rentDate]); });
+
+  var ss = sheet.getParent();
+  var name = 'Database (ไม่ซ้ำ)';
+  var ex = ss.getSheetByName(name);
+  if (ex) ss.deleteSheet(ex);
+  var nt = ss.insertSheet(name);
+  nt.getRange(1, 1, 1, width).setValues([headerVals]);
+  if (out.length) nt.getRange(2, 1, out.length, width).setValues(out);
+
+  var msg = 'สร้างแท็บ "' + name + '" แล้ว — เหลือ ' + out.length + ' งวด (จากเดิม ' + rows.length + ' แถว)';
+  Logger.log(msg);
+  return msg;
+}
+
+function dateSortKey_(v) {
+  if (v instanceof Date) return v.getTime();
+  var p = parseThaiDate_(String(v));
+  return p ? new Date(p.y, p.m - 1, p.d).getTime() : 0;
+}
