@@ -30,6 +30,33 @@ var HEADER_ROW = 2;
 // ถ้าไม่ได้ตั้ง DRIVE_FOLDER_ID จะสร้าง/ใช้โฟลเดอร์ชื่อนี้ใน Drive อัตโนมัติ
 var SLIP_FOLDER_NAME = 'Rent-home Slips';
 
+// ✉️ อีเมลที่อนุญาตให้ใช้แอป (จำกัดเฉพาะบางคน)
+//   - เว้นว่าง []  = อนุญาตทุกคนที่มีบัญชี Google และมีลิงก์ (ตามสิทธิ์ตอน Deploy)
+//   - ใส่รายชื่อ    = อนุญาตเฉพาะอีเมลในลิสต์ (ต้องใส่อีเมลตัวเองด้วย)
+//   ตัวอย่าง: ['freedomnew2009@gmail.com', 'partner@gmail.com']
+//   * ตั้งค่า Deploy → Who has access = "Anyone with a Google account" เพื่อให้คนอื่นล็อกอินเข้าได้
+var ALLOWED_USERS = [];
+
+/** อีเมลผู้ใช้ปัจจุบัน (อาจว่างสำหรับบางบัญชี consumer) */
+function currentEmail_() {
+  try { return (Session.getActiveUser().getEmail() || '').toLowerCase().trim(); }
+  catch (e) { return ''; }
+}
+
+/** อนุญาตให้ใช้ไหม — true ถ้าไม่ได้จำกัด หรืออีเมลอยู่ในลิสต์ */
+function isAllowed_() {
+  if (!ALLOWED_USERS.length) return true;         // ไม่ได้จำกัด
+  var email = currentEmail_();
+  if (!email) return false;                        // ระบุตัวตนไม่ได้ในโหมดจำกัด
+  for (var i = 0; i < ALLOWED_USERS.length; i++) {
+    if (String(ALLOWED_USERS[i]).toLowerCase().trim() === email) return true;
+  }
+  return false;
+}
+
+/** ข้อความปฏิเสธ (คืนให้ฝั่งหน้าเว็บ) */
+function denied_() { return { denied: true, error: 'บัญชีนี้ไม่มีสิทธิ์เข้าใช้แอป' }; }
+
 /**
  * รูปแบบการตั้งชื่อไฟล์สลิป — ให้ตรงกับที่ใช้ใน Google Drive อยู่แล้ว
  *   prefix      : คำนำหน้า (Rent / ส่วนกลาง / Bank)
@@ -115,6 +142,15 @@ var SECTIONS = [
  *  ========================================================================= */
 
 function doGet(e) {
+  // จำกัดสิทธิ์: ถ้าตั้ง ALLOWED_USERS ไว้และบัญชีนี้ไม่อยู่ในลิสต์ -> แสดงหน้าปฏิเสธ
+  if (!isAllowed_()) {
+    return HtmlService.createHtmlOutput(
+      '<div style="font-family:sans-serif;padding:40px;text-align:center;color:#2d2b2b">' +
+      '<h2>ไม่มีสิทธิ์เข้าใช้แอป</h2>' +
+      '<p>บัญชี <b>' + (currentEmail_() || '(ไม่ทราบ)') + '</b> ไม่ได้รับอนุญาต<br>' +
+      'กรุณาติดต่อเจ้าของแอปเพื่อขอสิทธิ์</p></div>'
+    ).setTitle('Rent-home');
+  }
   // โหมดตรวจสอบ: เปิด <exec-url>?debug=1 เพื่อดูว่ากำลังอ่านแท็บไหน + แต่ละแท็บมีกี่แถว
   if (e && e.parameter && e.parameter.debug) {
     return ContentService
@@ -234,6 +270,7 @@ function getFormConfig() {
  * ดึงรายการที่บันทึกไว้ (ล่าสุดอยู่บน) เพื่อแสดงบนหน้าเว็บ
  */
 function getRecords() {
+  if (!isAllowed_()) return [];
   var sheet = getSheet_();
   var map = getColumnMap_(sheet);
   var startRow = headerRow_(sheet) + 1;
@@ -283,6 +320,7 @@ function formatCellForClient_(v, type) {
  * @return {Object} ผลลัพธ์
  */
 function saveRecord(payload) {
+  if (!isAllowed_()) return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูล' };
   var lock = LockService.getScriptLock();
   lock.waitLock(30000); // กันการบันทึกพร้อมกันจนข้อมูลชนกัน
   try {
@@ -480,6 +518,7 @@ function deriveStatus_(cat, amt, dateStr, slip) {
  * @param {number} offset 0 = เดือนล่าสุด, 1 = ก่อนหน้า, ...
  */
 function getDashboard(offset) {
+  if (!isAllowed_()) return { hasData: false, denied: true };
   offset = Number(offset) || 0;
   var recs = getRecords();               // ใหม่สุดอยู่บน, เฉพาะแถวที่มีข้อมูล
   if (!recs.length) return { hasData: false };
@@ -533,6 +572,7 @@ function getDashboard(offset) {
  * @param {Object} payload {row?, category, amount, date, installment, slip?}
  */
 function saveAllocation(payload) {
+  if (!isAllowed_()) return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูล' };
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -596,6 +636,7 @@ function saveAllocation(payload) {
 
 /** รายชื่อหมวด (ให้หน้าเว็บใช้สร้างฟอร์ม/ประวัติ/สรุป) */
 function getCategories() {
+  if (!isAllowed_()) return [];
   return CATEGORIES.map(function (c) {
     return {
       key: c.key, name: c.name, dest: c.dest, color: c.color,
