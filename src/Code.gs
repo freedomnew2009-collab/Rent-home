@@ -31,11 +31,19 @@ var HEADER_ROW = 2;
 var SLIP_FOLDER_NAME = 'Rent-home Slips';
 
 // ✉️ อีเมลที่อนุญาตให้ใช้แอป (จำกัดเฉพาะบางคน)
-//   - เว้นว่าง []  = อนุญาตทุกคนที่มีบัญชี Google และมีลิงก์ (ตามสิทธิ์ตอน Deploy)
-//   - ใส่รายชื่อ    = อนุญาตเฉพาะอีเมลในลิสต์ (ต้องใส่อีเมลตัวเองด้วย)
-//   ตัวอย่าง: ['freedomnew2009@gmail.com', 'partner@gmail.com']
-//   * ตั้งค่า Deploy → Who has access = "Anyone with a Google account" เพื่อให้คนอื่นล็อกอินเข้าได้
-var ALLOWED_USERS = [];
+//   *** ไม่เก็บอีเมลไว้ในโค้ด (repo เป็น public) — ใส่ใน Script Properties แทน ***
+//   ตั้งที่: Apps Script → ⚙️ Project Settings → Script Properties → เพิ่ม
+//      ALLOWED_USERS = you@gmail.com, someone@gmail.com   (คั่นด้วย comma)
+//   - ไม่ตั้ง/เว้นว่าง = อนุญาตทุกคนที่มีบัญชี Google และมีลิงก์ (ตามสิทธิ์ตอน Deploy)
+//   - มีรายชื่อ        = อนุญาตเฉพาะอีเมลในลิสต์เท่านั้น (ต้องใส่อีเมลตัวเองด้วย)
+//   * ตั้งค่า Deploy → Who has access = "Anyone with a Google account" ด้วย
+
+/** รายชื่ออีเมลที่อนุญาต (อ่านจาก Script Properties, คั่นด้วย comma/เว้นวรรค/ขึ้นบรรทัด) */
+function allowedList_() {
+  return prop_('ALLOWED_USERS').split(/[,;\s]+/).map(function (s) {
+    return String(s).toLowerCase().trim();
+  }).filter(Boolean);
+}
 
 /** อีเมลผู้ใช้ปัจจุบัน (อาจว่างสำหรับบางบัญชี consumer) */
 function currentEmail_() {
@@ -45,17 +53,12 @@ function currentEmail_() {
 
 /** อนุญาตให้ใช้ไหม — true ถ้าไม่ได้จำกัด หรืออีเมลอยู่ในลิสต์ */
 function isAllowed_() {
-  if (!ALLOWED_USERS.length) return true;         // ไม่ได้จำกัด
+  var list = allowedList_();
+  if (!list.length) return true;                   // ไม่ได้จำกัด
   var email = currentEmail_();
   if (!email) return false;                        // ระบุตัวตนไม่ได้ในโหมดจำกัด
-  for (var i = 0; i < ALLOWED_USERS.length; i++) {
-    if (String(ALLOWED_USERS[i]).toLowerCase().trim() === email) return true;
-  }
-  return false;
+  return list.indexOf(email) >= 0;
 }
-
-/** ข้อความปฏิเสธ (คืนให้ฝั่งหน้าเว็บ) */
-function denied_() { return { denied: true, error: 'บัญชีนี้ไม่มีสิทธิ์เข้าใช้แอป' }; }
 
 /**
  * รูปแบบการตั้งชื่อไฟล์สลิป — ให้ตรงกับที่ใช้ใน Google Drive อยู่แล้ว
