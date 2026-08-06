@@ -145,6 +145,24 @@ var AUTO_SLIP_FIELDS = ['erSlip', 'goldSlip', 'taxSlip'];
  * เพิ่มหัวคอลัมน์สลิปที่ยังไม่มีในชีต — ปลอดภัยกับข้อมูลเดิม
  * ถ้าคอลัมน์ตำแหน่งเริ่มต้นมีข้อมูลอยู่ จะไปสร้างคอลัมน์ใหม่ท้ายตารางแทน
  */
+/** ชื่อหัวคอลัมน์ของฟิลด์ (ใช้ในข้อความแจ้งผู้ใช้) */
+function slipHeaderOf_(fieldKey) {
+  for (var i = 0; i < FIELDS.length; i++) { if (FIELDS[i].key === fieldKey) return FIELDS[i].header; }
+  return fieldKey;
+}
+
+/** มีหัวคอลัมน์ของฟิลด์นี้อยู่จริงในชีตไหม (ใช้เช็กก่อนเขียนสลิป) */
+function hasHeaderFor_(sheet, hr, fieldKey) {
+  var f = null;
+  for (var i = 0; i < FIELDS.length; i++) { if (FIELDS[i].key === fieldKey) { f = FIELDS[i]; break; } }
+  if (!f) return false;
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var headers = sheet.getRange(hr, 1, 1, lastCol).getValues()[0].map(function (h) {
+    return String(h == null ? '' : h).replace(/\s+/g, ' ').trim();
+  });
+  return headers.indexOf(f.header) >= 0;
+}
+
 function ensureSlipHeaders_(sheet, hr) {
   var lastRow = sheet.getLastRow();
   AUTO_SLIP_FIELDS.forEach(function (key) {
@@ -172,7 +190,12 @@ function ensureSlipHeaders_(sheet, hr) {
       usable = true;                                     // เลยขอบตาราง = คอลัมน์ว่าง
     }
     if (!usable) col = sheet.getLastColumn() + 1;        // มีข้อมูลปน -> ต่อท้ายตาราง
-    sheet.getRange(hr, col).setValue(f.header);
+    try {
+      sheet.getRange(hr, col).setValue(f.header);
+    } catch (e) {
+      // ชีตที่ใช้ "ตาราง" ของ Google Sheets อาจไม่ยอมให้เพิ่มคอลัมน์ —
+      // ข้ามไป แล้วจะไม่เขียนสลิปหมวดนี้ (ดูการเช็กด้วย hasHeaderFor_)
+    }
   });
 }
 
@@ -422,10 +445,16 @@ function saveRecord(payload) {
 
 /** จัดรูปแบบสกุลเงินให้คอลัมน์จำนวนเงินที่เป็นเงินบาท */
 function applyNumberFormats_(sheet, row, map) {
+  // เป็นแค่การตกแต่ง — ถ้าตั้งไม่ได้ต้องไม่ทำให้การบันทึกล้มเหลว
+  // (ชีตที่ใช้ "ตาราง" ของ Google Sheets จะล็อกชนิดคอลัมน์ไว้
+  //  และคืน error: You can't set the number format of cells in a typed column.)
   var bahtKeys = ['rentAmount', 'commonAmount', 'extraAmount'];
   bahtKeys.forEach(function (k) {
-    if (map[k] != null) {
+    if (map[k] == null) return;
+    try {
       sheet.getRange(row, map[k] + 1).setNumberFormat('฿#,##0.00');
+    } catch (e) {
+      // ชีตจัดรูปแบบสกุลเงินให้เองอยู่แล้ว — ข้ามไป
     }
   });
 }
@@ -729,9 +758,18 @@ function saveAllocation(payload) {
     if (payload.amount !== '' && payload.amount !== null && payload.amount !== undefined) {
       rowValues[map[cat.amtKey]] = Number(payload.amount);
     }
+    var warning = '';
     if (payload.slip && payload.slip.data && cat.slipKey) {
-      var vals = {}; vals[cat.dateKey] = payload.date || '';
-      rowValues[map[cat.slipKey]] = uploadFileToDrive_(payload.slip, cat.slipKey, vals);
+      // หมวดที่ต้องสร้างคอลัมน์สลิปเอง — เขียนได้ต่อเมื่อมีหัวคอลัมน์จริงแล้ว
+      // (ถ้าชีตเป็น "ตาราง" ที่เพิ่มคอลัมน์ไม่ได้ จะข้าม ไม่เขียนลงคอลัมน์ผิดที่)
+      var needsHeader = AUTO_SLIP_FIELDS.indexOf(cat.slipKey) >= 0;
+      if (!needsHeader || hasHeaderFor_(sheet, hr, cat.slipKey)) {
+        var vals = {}; vals[cat.dateKey] = payload.date || '';
+        rowValues[map[cat.slipKey]] = uploadFileToDrive_(payload.slip, cat.slipKey, vals);
+      } else {
+        warning = 'บันทึกข้อมูลแล้ว แต่ยังเก็บลิงก์สลิปไม่ได้ — ชีตไม่ยอมให้เพิ่มคอลัมน์ใหม่ ' +
+                  'กรุณาเพิ่มคอลัมน์ชื่อ "' + slipHeaderOf_(cat.slipKey) + '" ในชีตก่อน';
+      }
     }
 
     sheet.getRange(targetRow, 1, 1, width).setValues([rowValues]);
@@ -740,7 +778,8 @@ function saveAllocation(payload) {
     return {
       ok: true, row: targetRow, isNew: isNew,
       installment: String(rowValues[map.installment] || ''),
-      monthLabel: thaiMonthLabel_(payload.date, '')
+      monthLabel: thaiMonthLabel_(payload.date, ''),
+      warning: warning
     };
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };

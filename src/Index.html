@@ -688,7 +688,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       overlay(false);
       if (res && res.ok) {
         var where = [res.installment, res.monthLabel].filter(Boolean).join(' · ');
-        toast('บันทึกเรียบร้อย ✓' + (where ? ' → ' + where : '') + (res.isNew ? ' (งวดใหม่)' : ''));
+        if (res.warning) toast(res.warning, 1);
+        else toast('บันทึกเรียบร้อย ✓' + (where ? ' → ' + where : '') + (res.isNew ? ' (งวดใหม่)' : ''));
         resetRecord();
         loadDashboard(0);
         switchPanel('dashboard');
