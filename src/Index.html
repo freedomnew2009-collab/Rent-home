@@ -178,6 +178,24 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
 .btn-text { background: none; border: 0; cursor: pointer; font: inherit; font-size: 14px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 .btn-text:hover { color: var(--color-text); }
 
+/* โอนรวบหลายเดือน */
+.batch { margin: 6px 0 2px; }
+.batch-toggle { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 12px 0; }
+.batch-toggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--color-accent); flex: none; }
+.batch-toggle b { font-family: var(--font-heading); font-size: 15px; display: block; }
+.batch-toggle small { display: block; font-size: 12.5px; font-style: italic; margin-top: 2px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.batch-body { border-top: 1px solid var(--color-divider); padding-top: 6px; }
+.batch-list { max-height: 260px; overflow-y: auto; }
+.batch-row { display: flex; align-items: center; gap: 11px; padding: 10px 2px; border-bottom: 1px solid var(--color-divider); cursor: pointer; }
+.batch-row input { width: 19px; height: 19px; margin: 0; accent-color: var(--color-accent); flex: none; }
+.batch-row .bm { flex: 1; font-family: var(--font-heading); font-weight: 600; font-size: 15px; }
+.batch-row .bm small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 11px; font-style: italic;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent); }
+.batch-row .ba { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 600; }
+.batch-sum { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 2px 4px; }
+.batch-sum .batch-total { font-family: var(--font-num); font-weight: 600; font-size: 22px; font-variant-numeric: tabular-nums; color: var(--color-accent-700); }
+
 /* note บอกเดือนที่จะบันทึก */
 .save-note { font-size: 13px; padding: 10px 12px; border-radius: 8px; line-height: 1.5;
   background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-accent-800); }
@@ -364,6 +382,21 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
             <div class="field full"><label>งวด / เดือน</label><input class="finput" type="text" data-f="installment" placeholder="เช่น งวดที่ 19"></div>
             <div class="field full"><div class="save-note" data-save-note>เลือก “วันที่โอน” เพื่อระบุเดือนที่จะบันทึก</div></div>
           </div>
+
+          <!-- โอนรวบหลายเดือน (เฉพาะหมวดที่กันเงินไว้ทุกเดือน: ER / ทองคำ / ภาษี) -->
+          <div class="batch hide" data-batch>
+            <label class="batch-toggle">
+              <input type="checkbox" data-batch-on>
+              <span><b>โอนรวบหลายเดือนทีเดียว</b><small data-batch-hint>กันเงินไว้ทุกเดือน แล้วโอนครั้งเดียว</small></span>
+            </label>
+            <div class="batch-body hide" data-batch-body>
+              <div class="batch-list" data-batch-list></div>
+              <div class="batch-sum">
+                <span>เลือก <b data-batch-count>0</b> เดือน</span>
+                <span class="batch-total" data-batch-total>฿0</span>
+              </div>
+            </div>
+          </div>
           <label class="drop" for="slip">
             <span class="dic"><span class="ic" data-ic="camera"></span></span>
             <div>
@@ -454,7 +487,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     waiting_transfer: { cls: 'stat transfer', ic: 'arrow',     label: 'รอโอน' },
     overdue:          { cls: 'stat overdue',  ic: 'warning',   label: 'เกินกำหนด' },
     none:             { cls: 'stat paid',     ic: '',          label: 'ยังไม่ตั้ง' },
-    auto:             { cls: 'stat paid',     ic: 'check',     label: 'ตัดจากเงินเดือน' }
+    auto:             { cls: 'stat paid',     ic: 'check',     label: 'ตัดจากเงินเดือน' },
+    accrued:          { cls: 'stat slip',     ic: 'coins',     label: 'กันไว้ · ยังไม่โอน' }
   };
   function statHTML(st) {
     var s = STAT[st] || STAT.waiting_transfer;
@@ -469,6 +503,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     }
     if (a.status === 'waiting_slip') return '<button class="act outline" data-open-record="' + a.key + '"><span class="ic" data-ic="paperclip"></span>แนบสลิป</button>';
     if (a.status === 'overdue')      return '<button class="act danger" data-open-record="' + a.key + '"><span class="ic" data-ic="warning"></span>โอนด่วน</button>';
+    if (a.status === 'accrued')      return '<button class="act outline" data-open-record="' + a.key + '"><span class="ic" data-ic="coins"></span>โอนรวบ</button>';
     if (a.status === 'none')         return '<button class="act outline" data-open-record="' + a.key + '"><span class="ic" data-ic="add"></span>บันทึก</button>';
     return '<button class="act primary" data-open-record="' + a.key + '"><span class="ic" data-ic="arrow"></span>โอนเลย</button>';
   }
@@ -510,7 +545,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     d.allocations.forEach(function (a) {
       total += a.amount;
       if (a.status === 'paid' || a.status === 'waiting_slip' || a.status === 'auto') allocated += a.amount;
-      else if (a.status === 'waiting_transfer' || a.status === 'overdue') { pending += a.amount; pendItems.push(a); }
+      else if (a.status === 'waiting_transfer' || a.status === 'overdue' || a.status === 'accrued') { pending += a.amount; pendItems.push(a); }
       // status 'none' (ยังไม่ตั้ง) — ไม่นับเป็นจัดสรร/รอจัดสรร
     });
     var leftover = d.income - total;
@@ -569,6 +604,92 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     // เติมยอดเริ่มต้นประจำเดือน (เช่น ค่าผ่อนบ้าน 3,000) ถ้าช่องจำนวนเงินยังว่าง
     var amt = q('[data-f="amount"]');
     if (c && c.defaultAmount && amt && !amt.value) amt.value = c.defaultAmount;
+    setupBatchFor(c);
+  }
+
+  /* ---------- โอนรวบหลายเดือน ---------- */
+  var BATCH = { months: [], picked: {} };
+
+  /** แสดง/ซ่อนกล่อง "โอนรวบหลายเดือน" ตามหมวดที่เลือก */
+  function setupBatchFor(c) {
+    var box = q('[data-batch]');
+    var canBatch = !!(c && c.planAmount);
+    box.classList.toggle('hide', !canBatch);
+    if (!canBatch) { setBatchMode(false); return; }
+    setText('[data-batch-hint]', 'กันไว้เดือนละ ' + money(c.planAmount) + ' — เลือกเดือนที่จะโอนพร้อมกัน');
+    loadPending(c.key);
+  }
+
+  function loadPending(catKey) {
+    var list = q('[data-batch-list]');
+    list.innerHTML = '<div class="empty-note" style="padding:14px 0">กำลังโหลดเดือนที่ยังไม่ได้โอน…</div>';
+    srun('getPendingMonths', catKey).then(function (res) {
+      BATCH.months = (res && res.months) || [];
+      BATCH.picked = {};
+      if (!BATCH.months.length) {
+        list.innerHTML = '<div class="empty-note" style="padding:14px 0">ไม่มีเดือนค้าง — โอนครบทุกเดือนแล้ว ✓</div>';
+      } else {
+        list.innerHTML = BATCH.months.map(function (m) {
+          return '<label class="batch-row"><input type="checkbox" data-batch-ym="' + esc(m.ym) + '">' +
+            '<span class="bm">' + esc(m.label) +
+              '<small>' + esc(m.installment || '') + (m.recorded ? ' · มียอดในชีตแล้ว' : '') + '</small></span>' +
+            '<span class="ba">' + money(m.amount) + '</span></label>';
+        }).join('');
+      }
+      updateBatchSum();
+    }).catch(function (e) {
+      list.innerHTML = '<div class="empty-note" style="padding:14px 0">โหลดไม่สำเร็จ: ' + esc(e.message) + '</div>';
+    });
+  }
+
+  function setBatchMode(on) {
+    var cb = q('[data-batch-on]'); if (cb) cb.checked = !!on;
+    q('[data-batch-body]').classList.toggle('hide', !on);
+    // โหมดรวบ: ยอด/งวดมาจากเดือนที่เลือก จึงซ่อนช่องจำนวนเงินกับงวด
+    var amtField = q('[data-f="amount"]').closest('.field');
+    var instField = q('[data-f="installment"]').closest('.field');
+    if (amtField) amtField.classList.toggle('hide', !!on);
+    if (instField) instField.classList.toggle('hide', !!on);
+    var note = q('[data-save-note]');
+    if (on && note) { note.textContent = 'เลือกเดือนที่จะโอน แล้วระบุ “วันที่โอน” ครั้งเดียว'; note.className = 'save-note'; }
+    else updateSaveNote();
+  }
+  function isBatchMode() { var cb = q('[data-batch-on]'); return !!(cb && cb.checked && !q('[data-batch]').classList.contains('hide')); }
+
+  function updateBatchSum() {
+    var keys = Object.keys(BATCH.picked).filter(function (k) { return BATCH.picked[k]; });
+    var total = 0;
+    keys.forEach(function (ym) {
+      var m = BATCH.months.filter(function (x) { return x.ym === ym; })[0];
+      if (m) total += m.amount;
+    });
+    setText('[data-batch-count]', keys.length);
+    setText('[data-batch-total]', money(total));
+  }
+
+  function submitBatch() {
+    var cat = q('[data-cat-select]').value;
+    var dateIso = q('[data-f="date"]').value;
+    var picked = BATCH.months.filter(function (m) { return BATCH.picked[m.ym]; });
+    if (!picked.length) { toast('เลือกเดือนที่จะโอนอย่างน้อย 1 เดือน', 1); return; }
+    if (!dateIso) { toast('กรุณาระบุวันที่โอน', 1); return; }
+
+    overlay(true, recordFile ? 'กำลังบันทึก & อัปโหลดสลิป…' : 'กำลังบันทึก…');
+    srun('saveBatchAllocation', {
+      category: cat,
+      date: toThaiDate(dateIso),
+      months: picked.map(function (m) { return { ym: m.ym, amount: m.amount }; }),
+      slip: recordFile || null
+    }).then(function (res) {
+      overlay(false);
+      if (res && res.ok) {
+        if (res.warning) toast(res.warning, 1);
+        else toast('โอนรวบ ' + res.count + ' เดือน รวม ' + money(res.total) + ' เรียบร้อย ✓');
+        resetRecord();
+        loadDashboard(0);
+        switchPanel('dashboard');
+      } else { toast('บันทึกไม่สำเร็จ: ' + ((res && res.error) || 'ไม่ทราบสาเหตุ'), 1); }
+    }).catch(function (e) { overlay(false); toast('เกิดข้อผิดพลาด: ' + e.message, 1); });
   }
   function openRecord(catKey) {
     switchPanel('record');
@@ -644,6 +765,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
 
   function resetRecord() {
     TARGET_YM = '';
+    BATCH.picked = {};
+    setBatchMode(false);
     q('[data-f="amount"]').value = ''; q('[data-f="date"]').value = ''; q('[data-f="installment"]').value = '';
     clearFile();
     if (CATS.length) q('[data-cat-select]').value = CATS[0].key;
@@ -815,7 +938,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var rec = up(e.target, '[data-open-record]'); if (rec) { openRecord(rec.getAttribute('data-open-record')); return; }
     var cell = up(e.target, '[data-edit-ym]');
     if (cell) { openRecordFor(cell.getAttribute('data-edit-ym'), cell.getAttribute('data-edit-cat')); return; }
-    var sub = up(e.target, '[data-action="submit-record"]'); if (sub) { e.preventDefault(); submitRecord(); return; }
+    var sub = up(e.target, '[data-action="submit-record"]');
+    if (sub) { e.preventDefault(); if (isBatchMode()) submitBatch(); else submitRecord(); return; }
     var rst = up(e.target, '[data-action="reset-record"]'); if (rst) { e.preventDefault(); resetRecord(); return; }
     var rf = up(e.target, '[data-action="refresh"]'); if (rf) { loadDashboard(OFFSET); toast('รีเฟรชแล้ว'); return; }
     var mo = up(e.target, '[data-month]'); if (mo) {
@@ -843,7 +967,12 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       return;
     }
     var sel = up(e.target, '[data-cat-select]'); if (sel) updateDest();
-    if (e.target && e.target.getAttribute && e.target.getAttribute('data-f') === 'date') updateSaveNote();
+    if (e.target && e.target.getAttribute && e.target.getAttribute('data-f') === 'date' && !isBatchMode()) updateSaveNote();
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-batch-on')) { setBatchMode(e.target.checked); return; }
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-batch-ym')) {
+      BATCH.picked[e.target.getAttribute('data-batch-ym')] = e.target.checked;
+      updateBatchSum(); return;
+    }
   });
 
   /* ---------- init ---------- */

@@ -93,9 +93,11 @@ var CATEGORIES = [
   { key: 'extra',  name: 'ผ่อนบ้านเพิ่มเติม',   dest: 'ธนาคาร',             dateKey: 'extraDate',  amtKey: 'extraAmount',  slipKey: 'extraSlip',  color: 'var(--color-accent-700)' },
   { key: 'common', name: 'ค่าส่วนกลาง',         dest: 'นิติบุคคลหมู่บ้าน',   dateKey: 'commonDate', amtKey: 'commonAmount', slipKey: 'commonSlip', color: 'var(--color-accent-500)' },
   // slipOptional = แนบสลิปได้ แต่ไม่บังคับ (ไม่มีสลิปก็นับว่าจ่ายแล้ว)
-  { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: 'erSlip',   slipOptional: true, color: 'var(--color-accent-400)' },
-  { key: 'gold',   name: 'ลงทุนทองคำ',          dest: 'ออมทองคำ',           dateKey: 'goldDate',   amtKey: 'goldAmount',   slipKey: 'goldSlip', slipOptional: true, color: 'var(--color-accent-2-600)' },
-  { key: 'tax',    name: 'กันภาษี',             dest: 'บัญชีภาษี',          dateKey: 'taxDate',    amtKey: 'taxAmount',    slipKey: 'taxSlip',  slipOptional: true, color: 'var(--color-accent-2-400)' }
+  // planAmount  = ยอดที่ "กันไว้" ต่อเดือน — เดือนไหนยังไม่โอนจะขึ้นเป็นยอดค้างสะสม
+  //               และโอนรวบหลายเดือนทีเดียวได้ (แก้ตัวเลขตรงนี้ได้ตามจริง)
+  { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: 'erSlip',   slipOptional: true, planAmount: 500, color: 'var(--color-accent-400)' },
+  { key: 'gold',   name: 'ลงทุนทองคำ',          dest: 'ออมทองคำ',           dateKey: 'goldDate',   amtKey: 'goldAmount',   slipKey: 'goldSlip', slipOptional: true, planAmount: 300, color: 'var(--color-accent-2-600)' },
+  { key: 'tax',    name: 'กันภาษี',             dest: 'บัญชีภาษี',          dateKey: 'taxDate',    amtKey: 'taxAmount',    slipKey: 'taxSlip',  slipOptional: true, planAmount: 300, color: 'var(--color-accent-2-400)' }
 ];
 
 /**
@@ -650,10 +652,17 @@ function getDashboard(offset) {
     var amt = toNumber_(r[c.amtKey]);
     var date = r[c.dateKey] || '';
     var slip = c.slipKey ? (r[c.slipKey] || '') : '';
+    var status = deriveStatus_(c, amt, date, slip);
+    var accrued = false;
+    // หมวดที่กันเงินไว้ทุกเดือน (ER/ทอง/ภาษี) — ถ้ายังไม่มีวันที่โอน ถือเป็น "ค้างสะสม"
+    if (c.planAmount && !(date && /\d/.test(String(date)))) {
+      accrued = true;
+      status = 'accrued';
+      if (!(amt > 0)) amt = c.planAmount;
+    }
     allocations.push({
       key: c.key, name: c.name, dest: c.dest, color: c.color,
-      amount: amt, date: date, slip: slip,
-      status: deriveStatus_(c, amt, date, slip)
+      amount: amt, date: date, slip: slip, status: status, accrued: accrued
     });
   });
 
@@ -802,10 +811,137 @@ function getCategories() {
     return {
       key: c.key, name: c.name, dest: c.dest, color: c.color,
       income: !!c.income, hasSlip: !!c.slipKey, slipOptional: !!c.slipOptional,
-      fixed: !!c.fixed, defaultAmount: c.defaultAmount || 0,
+      fixed: !!c.fixed, defaultAmount: c.defaultAmount || 0, planAmount: c.planAmount || 0,
       startYM: c.startYM || '', amtKey: c.amtKey, dateKey: c.dateKey, slipKey: c.slipKey
     };
   });
+}
+
+/** =========================================================================
+ *  โอนรวบหลายเดือน (สำหรับหมวดที่กันเงินไว้ทุกเดือนแล้วโอนทีเดียว)
+ *  ========================================================================= */
+
+function catByKey_(key) {
+  for (var i = 0; i < CATEGORIES.length; i++) { if (CATEGORIES[i].key === key) return CATEGORIES[i]; }
+  return null;
+}
+
+/**
+ * เดือนที่ "กันเงินไว้แล้วแต่ยังไม่ได้โอน" ของหมวดหนึ่ง
+ * ใช้แสดงยอดค้างสะสม และให้เลือกโอนรวบทีเดียว
+ * @return {Object} { catKey, name, planAmount, months: [{ym,label,amount,row,recorded}], pendingTotal }
+ */
+function getPendingMonths(categoryKey) {
+  if (!isAllowed_()) return { months: [], pendingTotal: 0 };
+  var cat = catByKey_(categoryKey);
+  if (!cat || cat.fixed || cat.income) return { months: [], pendingTotal: 0 };
+
+  var recs = getRecords();          // ใหม่สุดอยู่บน
+  var months = [], total = 0;
+
+  recs.forEach(function (r) {
+    var ym = ymOf_(r.rentDate) || ymOf_(r.commonDate) || ymOf_(r.extraDate) || '';
+    if (!ym) return;
+    var amt = toNumber_(r[cat.amtKey]);
+    var date = r[cat.dateKey] || '';
+    if (date && /\d/.test(String(date))) return;            // โอนแล้ว ข้าม
+    var plan = amt > 0 ? amt : (cat.planAmount || 0);        // ถ้ามียอดไว้แล้วใช้ยอดนั้น
+    if (plan <= 0) return;
+    months.push({
+      ym: ym,
+      label: thaiMonthLabel_('01/' + ym.split('-')[1] + '/' + ym.split('-')[0], ''),
+      amount: plan,
+      row: r.row,
+      installment: r.installment || '',
+      recorded: amt > 0                                       // มียอดในชีตแล้ว แต่ยังไม่มีวันที่โอน
+    });
+    total += plan;
+  });
+
+  months.sort(function (a, b) { return a.ym < b.ym ? -1 : (a.ym > b.ym ? 1 : 0); });   // เก่า -> ใหม่
+  return {
+    catKey: cat.key, name: cat.name, dest: cat.dest,
+    planAmount: cat.planAmount || 0, months: months, pendingTotal: total
+  };
+}
+
+/**
+ * บันทึกการโอนรวบหลายเดือนในครั้งเดียว
+ * เขียนยอด/วันที่โอน/ลิงก์สลิปเดียวกันลงทุกเดือนที่เลือก (ยอดรวมยังถูกต้องรายเดือน)
+ * @param {Object} payload { category, months:[{ym, amount}], date:'dd/MM/yyyy', slip? }
+ */
+function saveBatchAllocation(payload) {
+  try {
+    return saveBatchAllocation_(payload);
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+}
+
+function saveBatchAllocation_(payload) {
+  if (!isAllowed_()) return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูล' };
+  var cat = catByKey_(payload && payload.category);
+  if (!cat || cat.fixed || cat.income) return { ok: false, error: 'หมวดไม่ถูกต้อง' };
+
+  var picked = (payload.months || []).filter(function (m) { return m && m.ym; });
+  if (!picked.length) return { ok: false, error: 'ยังไม่ได้เลือกเดือนที่จะโอน' };
+  if (!payload.date) return { ok: false, error: 'กรุณาระบุวันที่โอน' };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = getSheet_();
+    var hr = headerRow_(sheet);
+    if (payload.slip && payload.slip.data) ensureSlipHeaders_(sheet, hr);
+    var map = getColumnMap_(sheet);
+    var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
+    var startRow = hr + 1;
+    var lastRow = sheet.getLastRow();
+    var block = (lastRow >= startRow)
+      ? sheet.getRange(startRow, 1, lastRow - startRow + 1, width).getValues()
+      : [];
+
+    // อัปโหลดสลิปครั้งเดียว ใช้ลิงก์เดียวกันทุกเดือนที่เลือก
+    var slipUrl = '';
+    var warning = '';
+    if (payload.slip && payload.slip.data && cat.slipKey) {
+      var needsHeader = AUTO_SLIP_FIELDS.indexOf(cat.slipKey) >= 0;
+      if (!needsHeader || hasHeaderFor_(sheet, hr, cat.slipKey)) {
+        var vals = {}; vals[cat.dateKey] = payload.date;
+        slipUrl = uploadFileToDrive_(payload.slip, cat.slipKey, vals);
+      } else {
+        warning = 'บันทึกแล้ว แต่เก็บลิงก์สลิปไม่ได้ — กรุณาเพิ่มคอลัมน์ "' + slipHeaderOf_(cat.slipKey) + '" ในชีตก่อน';
+      }
+    }
+
+    var done = [], skipped = [], totalAmount = 0;
+    picked.forEach(function (m) {
+      var idx = -1;
+      for (var j = 0; j < block.length; j++) {
+        if (rowYM_(block[j], map) === m.ym) { idx = j; break; }
+      }
+      if (idx < 0) { skipped.push(m.ym); return; }           // ไม่พบแถวของเดือนนั้น
+
+      var rowValues = block[idx].slice();
+      var amount = Number(m.amount);
+      if (!(amount > 0)) amount = cat.planAmount || 0;
+      rowValues[map[cat.amtKey]] = amount;
+      rowValues[map[cat.dateKey]] = String(payload.date);
+      if (slipUrl) rowValues[map[cat.slipKey]] = slipUrl;
+
+      sheet.getRange(startRow + idx, 1, 1, width).setValues([rowValues]);
+      block[idx] = rowValues;
+      done.push(m.ym);
+      totalAmount += amount;
+    });
+
+    return {
+      ok: true, count: done.length, months: done, skipped: skipped,
+      total: totalAmount, date: payload.date, hasSlip: !!slipUrl, warning: warning
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
