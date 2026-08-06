@@ -62,13 +62,7 @@ jobs:
           if [ -z "${CLASPRC_JSON:-}" ]; then
             echo "::error::ยังไม่ได้ตั้ง secret CLASPRC_JSON (เนื้อหาไฟล์ ~/.clasprc.json)"; missing=1
           else
-            echo "$CLASPRC_JSON" | node -e '
-              let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
-                const j=JSON.parse(s);
-                const tok=j.token||j.tokens?.default||j;
-                if(!(tok.refresh_token||tok.refreshToken)) throw new Error("ไม่พบ refresh_token ใน CLASPRC_JSON");
-                console.log("✓ CLASPRC_JSON อ่านได้ และมี refresh_token");
-              });'
+            echo "✓ CLASPRC_JSON ถูกตั้งไว้แล้ว (ตรวจรูปแบบในขั้นตอนถัดไป)"
           fi
           if [ -z "${SCRIPT_ID:-}" ]; then
             echo "::error::ยังไม่ได้ตั้ง secret SCRIPT_ID (Apps Script → Project Settings → Script ID)"; missing=1
@@ -86,8 +80,8 @@ jobs:
           SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
         run: |
           set -euo pipefail
-          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
-          chmod 600 "$HOME/.clasprc.json"
+          # แปลง credential ให้อยู่ในรูปแบบที่ clasp 2.4.x อ่านได้ (รองรับไฟล์จาก clasp v2/v3)
+          node .github/scripts/normalize-clasprc.js "$HOME/.clasprc.json"
           node -e '
             const fs=require("fs");
             fs.writeFileSync(".clasp.json", JSON.stringify({scriptId: process.env.SCRIPT_ID.trim(), rootDir: "src"}));
