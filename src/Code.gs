@@ -393,6 +393,14 @@ function formatCellForClient_(v, type) {
  * @return {Object} ผลลัพธ์
  */
 function saveRecord(payload) {
+  try {
+    return saveRecord_(payload);
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+}
+
+function saveRecord_(payload) {
   if (!isAllowed_()) return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูล' };
   var lock = LockService.getScriptLock();
   lock.waitLock(30000); // กันการบันทึกพร้อมกันจนข้อมูลชนกัน
@@ -433,7 +441,6 @@ function saveRecord(payload) {
     });
 
     sheet.getRange(targetRow, 1, 1, width).setValues([rowValues]);
-    applyNumberFormats_(sheet, targetRow, map);
 
     return { ok: true, row: targetRow, edited: isEdit };
   } catch (err) {
@@ -443,21 +450,9 @@ function saveRecord(payload) {
   }
 }
 
-/** จัดรูปแบบสกุลเงินให้คอลัมน์จำนวนเงินที่เป็นเงินบาท */
-function applyNumberFormats_(sheet, row, map) {
-  // เป็นแค่การตกแต่ง — ถ้าตั้งไม่ได้ต้องไม่ทำให้การบันทึกล้มเหลว
-  // (ชีตที่ใช้ "ตาราง" ของ Google Sheets จะล็อกชนิดคอลัมน์ไว้
-  //  และคืน error: You can't set the number format of cells in a typed column.)
-  var bahtKeys = ['rentAmount', 'commonAmount', 'extraAmount'];
-  bahtKeys.forEach(function (k) {
-    if (map[k] == null) return;
-    try {
-      sheet.getRange(row, map[k] + 1).setNumberFormat('฿#,##0.00');
-    } catch (e) {
-      // ชีตจัดรูปแบบสกุลเงินให้เองอยู่แล้ว — ข้ามไป
-    }
-  });
-}
+// หมายเหตุ: ไม่ตั้งรูปแบบสกุลเงินด้วย setNumberFormat อีกต่อไป
+// ชีตนี้ใช้ "ตาราง" ของ Google Sheets ซึ่งล็อกชนิดคอลัมน์ไว้ และจะคืน error
+// "You can't set the number format of cells in a typed column." — ตัวชีตจัดรูปแบบเงินให้เองอยู่แล้ว
 
 /** =========================================================================
  *  อัปโหลดรูปเข้า Google Drive
@@ -682,7 +677,20 @@ function getDashboard(offset) {
  * ถ้าไม่พบงวด จะเพิ่มแถวใหม่
  * @param {Object} payload {row?, category, amount, date, installment, slip?}
  */
+/**
+ * ตัวห่อกัน exception หลุดไปถึงหน้าเว็บ (google.script.run จะเรียก failure handler
+ * และผู้ใช้จะเห็น "เกิดข้อผิดพลาด" ทั้งที่ข้อมูลอาจถูกบันทึกไปแล้ว)
+ * ทุกกรณีจะคืนเป็น { ok: true/false } เสมอ
+ */
 function saveAllocation(payload) {
+  try {
+    return saveAllocation_(payload);
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+}
+
+function saveAllocation_(payload) {
   if (!isAllowed_()) return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูล' };
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -773,7 +781,6 @@ function saveAllocation(payload) {
     }
 
     sheet.getRange(targetRow, 1, 1, width).setValues([rowValues]);
-    applyNumberFormats_(sheet, targetRow, map);
 
     return {
       ok: true, row: targetRow, isNew: isNew,
