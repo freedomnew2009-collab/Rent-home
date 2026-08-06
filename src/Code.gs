@@ -496,6 +496,38 @@ function ymOf_(dateStr) {
   return p ? (p.y + '-' + pad2_(p.m)) : '';
 }
 
+/**
+ * "เดือนของแถว" (yyyy-mm) ใช้ระบุว่าแถวนี้คืองวดของเดือนไหน
+ * ยึดวันที่จ่ายค่าเช่าเป็นหลัก ถ้าไม่มีใช้วันที่แรกที่เจอในแถว
+ */
+function rowYM_(rowValues, map) {
+  var ym = ymOf_(cellToDateStr_(rowValues[map.rentDate]));
+  if (ym) return ym;
+  for (var i = 0; i < CATEGORIES.length; i++) {
+    var c = CATEGORIES[i];
+    if (c.income || c.fixed || !c.dateKey) continue;
+    ym = ymOf_(cellToDateStr_(rowValues[map[c.dateKey]]));
+    if (ym) return ym;
+  }
+  return '';
+}
+
+/** ค่าจากเซลล์ -> ข้อความวันที่ dd/MM/yyyy (รองรับทั้ง Date และข้อความ) */
+function cellToDateStr_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+  return String(v == null ? '' : v).trim();
+}
+
+/** เลขงวดถัดไป เช่น มีถึง "งวดที่ 18" -> "งวดที่ 19" */
+function nextInstallment_(block, map) {
+  var max = 0;
+  block.forEach(function (row) {
+    var m = String(row[map.installment] || '').match(/(\d+)/);
+    if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+  });
+  return 'งวดที่ ' + (max + 1);
+}
+
 /** ป้ายเดือน-ปี (พ.ศ.) จากวันที่ dd/MM/yyyy เช่น "ก.ค. 2569" */
 function thaiMonthLabel_(dateStr, fallback) {
   var p = parseThaiDate_(dateStr);
@@ -584,6 +616,7 @@ function saveAllocation(payload) {
       if (CATEGORIES[i].key === payload.category) { cat = CATEGORIES[i]; break; }
     }
     if (!cat) return { ok: false, error: 'หมวดไม่ถูกต้อง' };
+    if (cat.fixed) return { ok: false, error: 'หมวดนี้เป็นยอดคงที่ (ตัดจากเงินเดือน) ไม่ต้องบันทึก' };
 
     var sheet = getSheet_();
     var hr = headerRow_(sheet);
@@ -591,32 +624,59 @@ function saveAllocation(payload) {
     var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
     var installment = String(payload.installment || '').trim();
 
-    // หาแถวเป้าหมาย: ตาม row -> ตามงวด -> เพิ่มใหม่
+    // ---- หาแถวเป้าหมาย ----
+    // สำคัญ: ยึด "เดือนของวันที่ที่กรอก" เป็นหลัก ไม่ใช่เดือนที่กำลังเปิดดูอยู่
+    // (เดิมใช้ payload.row ของเดือนที่ดูอยู่ ทำให้บันทึกเดือน 7 ไปลงแถวเดือน 6)
+    var startRow = hr + 1;
+    var lastRow = sheet.getLastRow();
+    var targetYM = ymOf_(payload.date);
     var targetRow = 0;
-    if (payload.row && Number(payload.row) > hr) {
-      targetRow = Number(payload.row);
-    } else if (installment) {
-      var startRow = hr + 1;
-      var lastRow = sheet.getLastRow();
-      if (lastRow >= startRow) {
-        var col = map.installment;
-        var colVals = sheet.getRange(startRow, col + 1, lastRow - startRow + 1, 1).getValues();
-        for (var j = 0; j < colVals.length; j++) {
-          if (String(colVals[j][0]).replace(/\s+/g, ' ').trim() === installment) {
-            targetRow = startRow + j; break;
-          }
-        }
+
+    var block = (lastRow >= startRow)
+      ? sheet.getRange(startRow, 1, lastRow - startRow + 1, width).getValues()
+      : [];
+
+    if (targetYM) {
+      // 1) หาแถวที่ "เดือนของแถว" ตรงกับเดือนที่กรอก
+      for (var j = 0; j < block.length; j++) {
+        if (rowYM_(block[j], map) === targetYM) { targetRow = startRow + j; break; }
+      }
+    }
+    if (!targetRow && payload.row && Number(payload.row) > hr) {
+      // 2) ใช้แถวที่ส่งมา เฉพาะเมื่อไม่ได้กรอกวันที่ (แก้ไขข้อมูลอื่นของแถวนั้น)
+      if (!targetYM) targetRow = Number(payload.row);
+    }
+    if (!targetRow && installment) {
+      // 3) จับคู่ตามชื่องวด เฉพาะแถวที่ยังไม่มีเดือนกำกับ
+      for (var k = 0; k < block.length; k++) {
+        if (String(block[k][map.installment]).replace(/\s+/g, ' ').trim() === installment &&
+            !rowYM_(block[k], map)) { targetRow = startRow + k; break; }
       }
     }
     var isNew = !targetRow;
     if (isNew) targetRow = Math.max(sheet.getLastRow() + 1, hr + 1);
+    // แถวใหม่: ตั้งเลขงวดถัดไปให้อัตโนมัติ ถ้าไม่ได้ระบุ
+    // หรือถ้าชื่องวดที่ส่งมาถูกใช้ไปแล้ว (เช่นค้างมาจากเดือนที่เปิดดูอยู่) กันงวดซ้ำ
+    if (isNew) {
+      var taken = false;
+      if (installment) {
+        for (var t = 0; t < block.length; t++) {
+          if (String(block[t][map.installment]).replace(/\s+/g, ' ').trim() === installment) { taken = true; break; }
+        }
+      }
+      if (!installment || taken) installment = nextInstallment_(block, map);
+    }
 
     var rowValues = new Array(width).fill('');
     if (!isNew && targetRow <= sheet.getLastRow()) {
       rowValues = sheet.getRange(targetRow, 1, 1, width).getValues()[0];
     }
 
-    if (installment) rowValues[map.installment] = installment;
+    // เขียนชื่องวดเฉพาะแถวใหม่ หรือแถวเดิมที่ยังไม่มีชื่องวด
+    // (กันชื่องวดของ "เดือนที่กำลังดู" ไปทับงวดของแถวที่จับคู่ได้จริง)
+    if (installment && (isNew || !String(rowValues[map.installment] || '').trim())) {
+      rowValues[map.installment] = installment;
+    }
     if (payload.date) rowValues[map[cat.dateKey]] = String(payload.date);
     if (payload.amount !== '' && payload.amount !== null && payload.amount !== undefined) {
       rowValues[map[cat.amtKey]] = Number(payload.amount);
@@ -629,7 +689,11 @@ function saveAllocation(payload) {
     sheet.getRange(targetRow, 1, 1, width).setValues([rowValues]);
     applyNumberFormats_(sheet, targetRow, map);
 
-    return { ok: true, row: targetRow, isNew: isNew };
+    return {
+      ok: true, row: targetRow, isNew: isNew,
+      installment: String(rowValues[map.installment] || ''),
+      monthLabel: thaiMonthLabel_(payload.date, '')
+    };
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };
   } finally {
@@ -647,6 +711,67 @@ function getCategories() {
       startYM: c.startYM || '', amtKey: c.amtKey, dateKey: c.dateKey, slipKey: c.slipKey
     };
   });
+}
+
+/**
+ * สรุปรายเดือน — เรียงทุกเดือนจากเก่าไปใหม่ เพื่อตรวจสอบง่าย
+ * แต่ละเดือนบอก: รับเข้า / จัดสรรออกแยกหมวด / รวมออก / คงเหลือ
+ * และตั้งธง dup=true ถ้าเดือนนั้นมีมากกว่า 1 แถว (ข้อมูลซ้ำ)
+ */
+function getMonthlySummary() {
+  if (!isAllowed_()) return { months: [], totals: {} };
+  var recs = getRecords();                 // ใหม่สุดอยู่บน
+  var byYM = {}, order = [];
+
+  recs.forEach(function (r) {
+    var ym = ymOf_(r.rentDate) || ymOf_(r.commonDate) || ymOf_(r.extraDate) || '';
+    var key = ym || ('row-' + r.row);
+    if (!byYM[key]) { byYM[key] = { ym: ym, rows: [], count: 0 }; order.push(key); }
+    byYM[key].rows.push(r);
+    byYM[key].count++;
+  });
+
+  var months = order.map(function (key) {
+    var g = byYM[key];
+    var m = {
+      ym: g.ym,
+      label: g.ym ? thaiMonthLabel_('01/' + g.ym.split('-')[1] + '/' + g.ym.split('-')[0], '') : '(ไม่มีวันที่)',
+      installment: '', income: 0, out: 0, dup: g.count > 1, rowCount: g.count,
+      rows: [], cats: {}
+    };
+    g.rows.forEach(function (r) {
+      if (!m.installment && r.installment) m.installment = r.installment;
+      m.rows.push(r.row);
+      m.income += toNumber_(r.rentAmount);
+      CATEGORIES.forEach(function (c) {
+        if (c.income) return;
+        var amt = c.fixed ? 0 : toNumber_(r[c.amtKey]);   // fixed คิดรวมด้านล่าง
+        if (!m.cats[c.key]) m.cats[c.key] = 0;
+        m.cats[c.key] += amt;
+      });
+    });
+    // หมวดคงที่ (ค่าผ่อนบ้าน) — นับ 1 ครั้งต่อเดือน ถ้าเดือนนั้น >= startYM
+    CATEGORIES.forEach(function (c) {
+      if (!c.fixed) return;
+      var on = !c.startYM || (m.ym && m.ym >= c.startYM);
+      m.cats[c.key] = on ? (c.defaultAmount || 0) : 0;
+    });
+    Object.keys(m.cats).forEach(function (k) { m.out += m.cats[k]; });
+    m.leftover = m.income - m.out;
+    return m;
+  });
+
+  months.sort(function (a, b) { return a.ym < b.ym ? -1 : (a.ym > b.ym ? 1 : 0); });  // เก่า -> ใหม่
+
+  var totals = { income: 0, out: 0, cats: {}, monthCount: months.length, dupCount: 0 };
+  months.forEach(function (m) {
+    totals.income += m.income; totals.out += m.out;
+    if (m.dup) totals.dupCount++;
+    Object.keys(m.cats).forEach(function (k) { totals.cats[k] = (totals.cats[k] || 0) + m.cats[k]; });
+  });
+  totals.leftover = totals.income - totals.out;
+
+  return { months: months, totals: totals };
 }
 
 /** =========================================================================

@@ -149,7 +149,8 @@ body { background: var(--color-bg); color: var(--color-text); font-family: var(-
 .act.link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* record form */
-.record, .hist, .sum { max-width: 620px; padding-top: 24px; }
+.record, .hist { max-width: 620px; padding-top: 24px; }
+.sum { max-width: 100%; padding-top: 24px; }   /* ตารางรายเดือนกว้าง ให้ใช้พื้นที่เต็ม */
 .rec-title { font-family: var(--font-heading); font-weight: 600; font-size: 32px; letter-spacing: -.025em; margin: 12px 0 0; line-height: 1; }
 .rec-sub { font-size: 14px; font-style: italic; color: color-mix(in srgb, var(--color-text) 58%, transparent); margin: 11px 0 0; line-height: 1.5; }
 .record .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 22px 0; }
@@ -176,6 +177,37 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
 .btn-primary-lg:disabled { opacity: .5; cursor: default; }
 .btn-text { background: none; border: 0; cursor: pointer; font: inherit; font-size: 14px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 .btn-text:hover { color: var(--color-text); }
+
+/* note บอกเดือนที่จะบันทึก */
+.save-note { font-size: 13px; padding: 10px 12px; border-radius: 8px; line-height: 1.5;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-accent-800); }
+.save-note.warn { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
+
+/* ตารางสรุปรายเดือน */
+.mtable-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 4px 0 18px;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-lg); }
+.mtable { border-collapse: collapse; width: 100%; font-size: 13.5px; white-space: nowrap; }
+.mtable th, .mtable td { padding: 10px 12px; border-bottom: 1px solid var(--color-divider); text-align: right; }
+.mtable thead th { position: sticky; top: 0; background: var(--color-surface); font-size: 11px; letter-spacing: .06em;
+  text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 62%, transparent); font-weight: 600; }
+.mtable thead th .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+.mtable th.mth { text-align: left; font-family: var(--font-heading); font-weight: 600; font-size: 14px;
+  position: sticky; left: 0; background: var(--color-bg); z-index: 1; }
+.mtable thead th.mth { background: var(--color-surface); z-index: 2; }
+.mtable th.mth .sub { display: block; font-family: var(--font-body); font-weight: 400; font-size: 10.5px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent); margin-top: 2px; }
+.mtable td.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.mtable td.zero { color: color-mix(in srgb, var(--color-text) 32%, transparent); }
+.mtable td.in { color: var(--color-accent-800); font-weight: 600; }
+.mtable td.out { font-weight: 600; }
+.mtable td.left { color: var(--color-accent-2-700); font-weight: 600; }
+.mtable td.left.neg { color: var(--color-accent-2); }
+.mtable tbody tr:hover td, .mtable tbody tr:hover th.mth { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.mtable tr.dup th.mth, .mtable tr.dup td { background: var(--color-accent-2-100); }
+.mtable .dup-tag { font-family: var(--font-body); font-size: 10px; font-weight: 600; color: var(--color-accent-2-800);
+  border: 1px solid var(--color-accent-2-400); border-radius: 999px; padding: 1px 7px; margin-left: 6px; }
+.mtable tfoot .tot th, .mtable tfoot .tot td { border-top: 2px solid var(--color-text); border-bottom: 0;
+  font-family: var(--font-num); font-weight: 600; background: var(--color-bg); }
 
 /* history / summary */
 .hist [data-history], .sum [data-summary] { margin-top: 20px; }
@@ -321,6 +353,7 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
             <div class="field"><label>จำนวนเงิน (บาท)</label><input class="finput" type="number" step="0.01" inputmode="decimal" data-f="amount" placeholder="0.00"></div>
             <div class="field"><label>วันที่โอน</label><input class="finput" type="date" data-f="date"></div>
             <div class="field full"><label>งวด / เดือน</label><input class="finput" type="text" data-f="installment" placeholder="เช่น งวดที่ 19"></div>
+            <div class="field full"><div class="save-note" data-save-note>เลือก “วันที่โอน” เพื่อระบุเดือนที่จะบันทึก</div></div>
           </div>
           <label class="drop" for="slip">
             <span class="dic"><span class="ic" data-ic="camera"></span></span>
@@ -535,13 +568,37 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var alloc = DASH && DASH.allocations ? DASH.allocations.filter(function (a) { return a.key === catKey; })[0] : null;
     if (catKey === 'rent' && DASH) { q('[data-f="amount"]').value = DASH.income || ''; if (DASH.incomeDate) q('[data-f="date"]').value = toISODate(DASH.incomeDate); }
     else if (alloc) { q('[data-f="amount"]').value = alloc.amount || ''; if (alloc.date) q('[data-f="date"]').value = toISODate(alloc.date); }
+    updateSaveNote();
     var amt = q('[data-f="amount"]'); if (amt) amt.focus();
   }
+  // แสดงว่าจะบันทึกลงเดือน/งวดไหน ตาม "วันที่โอน" ที่กรอก
+  var THAI_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  function updateSaveNote() {
+    var note = q('[data-save-note]'); if (!note) return;
+    var iso = q('[data-f="date"]').value;
+    if (!iso) { note.textContent = 'เลือก “วันที่โอน” เพื่อระบุเดือนที่จะบันทึก'; note.className = 'save-note'; return; }
+    var p = iso.split('-');
+    var label = THAI_M[parseInt(p[1], 10) - 1] + ' ' + (parseInt(p[0], 10) + 543);
+    var viewing = DASH && DASH.installment ? DASH.installment : '';
+    var sameMonth = DASH && DASH.incomeDate && ymC(DASH.incomeDate) === (p[0] + '-' + p[1]);
+    if (sameMonth) {
+      note.textContent = '📌 จะบันทึกลงเดือน ' + label + (viewing ? ' (' + viewing + ')' : '');
+      note.className = 'save-note';
+    } else {
+      // คนละเดือนกับที่กำลังดู -> ล้างชื่องวดของเดือนเดิม กันบันทึกผิดงวด
+      var inst = q('[data-f="installment"]');
+      if (inst && viewing && inst.value.trim() === viewing) inst.value = '';
+      note.textContent = '📌 จะบันทึกลงเดือน ' + label + ' — เป็นคนละเดือนกับที่กำลังดู ระบบจะสร้าง/ใช้งวดของเดือนนั้น';
+      note.className = 'save-note warn';
+    }
+  }
+
   function resetRecord() {
     q('[data-f="amount"]').value = ''; q('[data-f="date"]').value = ''; q('[data-f="installment"]').value = '';
     clearFile();
     if (CATS.length) q('[data-cat-select]').value = CATS[0].key;
     updateDest();
+    updateSaveNote();
   }
   function clearFile() {
     recordFile = null;
@@ -571,14 +628,17 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       installment: installment,
       slip: recordFile || null
     };
-    // ถ้างวดตรงกับเดือนที่กำลังดู ให้เขียนทับแถวเดิม
-    if (DASH && installment && installment === (DASH.installment || '')) payload.row = DASH.row;
+    // ระบุแถวเฉพาะตอน "ไม่ได้กรอกวันที่" เท่านั้น
+    // ถ้ากรอกวันที่ ให้เซิร์ฟเวอร์เลือกแถวตามเดือนของวันที่นั้น
+    // (กันบันทึกเดือน 7 ไปลงแถวเดือน 6 ที่กำลังเปิดดูอยู่)
+    if (!dateIso && DASH && installment && installment === (DASH.installment || '')) payload.row = DASH.row;
 
     overlay(true, recordFile ? 'กำลังบันทึก & อัปโหลดสลิป…' : 'กำลังบันทึก…');
     srun('saveAllocation', payload).then(function (res) {
       overlay(false);
       if (res && res.ok) {
-        toast('บันทึกลง Google Sheet เรียบร้อย ✓');
+        var where = [res.installment, res.monthLabel].filter(Boolean).join(' · ');
+        toast('บันทึกเรียบร้อย ✓' + (where ? ' → ' + where : '') + (res.isNew ? ' (งวดใหม่)' : ''));
         resetRecord();
         loadDashboard(0);
         switchPanel('dashboard');
@@ -614,36 +674,51 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       '<div class="hm-lines">' + (lines.join('') || '<div class="hm-line"><span>— ไม่มีรายการจัดสรร —</span><span></span></div>') + '</div></div>';
   }
 
-  /* ---------- summary ---------- */
+  /* ---------- summary (เรียงทุกเดือน) ---------- */
   function loadSummary() {
     var box = q('[data-summary]'); box.innerHTML = '<div class="empty-note">กำลังโหลด…</div>';
-    srun('getRecords').then(function (recs) {
-      if (!recs || !recs.length) { box.innerHTML = '<div class="empty-note">ยังไม่มีข้อมูล</div>'; return; }
-      var income = 0, totals = {}; CATS.forEach(function (c) { totals[c.key] = 0; });
-      recs.forEach(function (r) {
-        income += num(r.rentAmount);
-        CATS.forEach(function (c) {
-          if (c.income || c.fixed) return;   // fixed คิดแยกด้านล่าง
-          totals[c.key] += num(r[c.amtKey]);
-        });
-      });
-      // หมวดคงที่ (เช่น ค่าผ่อนบ้าน): นับตามจำนวนเดือนตั้งแต่ startYM ถึงเดือนล่าสุด
-      var latestYM = ymC(recs[0].rentDate);   // recs[0] = เดือนใหม่สุด
-      CATS.forEach(function (c) {
-        if (!c.fixed) return;
-        totals[c.key] = monthSpanC(c.startYM || latestYM, latestYM) * (c.defaultAmount || 0);
-      });
-      var out = 0, rows = '';
-      CATS.forEach(function (c) {
-        if (c.income) return; out += totals[c.key];
-        rows += '<div class="sum-row"><span class="s-name"><span class="dot" style="background:' + c.color + '"></span>' + esc(c.name) + '</span>' +
-          '<span class="s-val">' + money(totals[c.key]) + '</span></div>';
-      });
-      box.innerHTML =
-        '<div class="sum-row"><span class="s-name"><span class="dot" style="background:var(--color-accent-800)"></span>ค่าเช่ารับเข้า (รวม)</span><span class="s-val">' + money(income) + '</span></div>' +
-        rows +
-        '<div class="sum-total"><span class="k">รวมจัดสรรออกทั้งหมด · ' + recs.length + ' เดือน</span><span class="v">' + money(out) + '</span></div>' +
-        '<div class="sum-total" style="border-top:1px solid var(--color-divider)"><span class="k">คงเหลือสะสม</span><span class="v">' + (income - out < 0 ? '−' : '') + '฿' + Math.abs(Math.round(income - out)).toLocaleString('th-TH') + '</span></div>';
+    srun('getMonthlySummary').then(function (res) {
+      var months = (res && res.months) || [], t = (res && res.totals) || {};
+      if (!months.length) { box.innerHTML = '<div class="empty-note">ยังไม่มีข้อมูล</div>'; return; }
+      var outCats = CATS.filter(function (c) { return !c.income; });
+
+      // เตือนถ้ามีเดือนซ้ำ
+      var warn = t.dupCount
+        ? '<div class="alert" style="padding:10px 0 14px"><span class="ic" data-ic="warning"></span>' +
+          '<div class="a-body"><b>พบเดือนที่มีข้อมูลซ้ำ ' + t.dupCount + ' เดือน</b> — ดูแถวที่ทำเครื่องหมาย “ซ้ำ” ด้านล่าง แล้วลบแถวเกินในชีต</div></div>'
+        : '';
+
+      // ตารางรายเดือน (เก่า -> ใหม่)
+      var rows = months.map(function (m) {
+        var cells = outCats.map(function (c) {
+          var v = m.cats[c.key] || 0;
+          return '<td class="num' + (v ? '' : ' zero') + '">' + (v ? money(v) : '–') + '</td>';
+        }).join('');
+        return '<tr' + (m.dup ? ' class="dup"' : '') + '>' +
+          '<th class="mth">' + esc(m.label) + (m.dup ? ' <span class="dup-tag">ซ้ำ ' + m.rowCount + ' แถว</span>' : '') +
+            '<span class="sub">' + esc(m.installment || '') + ' · แถว ' + m.rows.join(', ') + '</span></th>' +
+          '<td class="num in">' + (m.income ? money(m.income) : '–') + '</td>' +
+          cells +
+          '<td class="num out">' + money(m.out) + '</td>' +
+          '<td class="num left' + (m.leftover < 0 ? ' neg' : '') + '">' + (m.leftover < 0 ? '−' : '') + '฿' + Math.abs(Math.round(m.leftover)).toLocaleString('th-TH') + '</td>' +
+          '</tr>';
+      }).join('');
+
+      var head = '<tr><th class="mth">เดือน</th><th class="num">รับเข้า</th>' +
+        outCats.map(function (c) { return '<th class="num"><span class="dot" style="background:' + c.color + '"></span>' + esc(c.name) + '</th>'; }).join('') +
+        '<th class="num">รวมออก</th><th class="num">คงเหลือ</th></tr>';
+
+      var foot = '<tr class="tot"><th class="mth">รวม ' + months.length + ' เดือน</th>' +
+        '<td class="num in">' + money(t.income) + '</td>' +
+        outCats.map(function (c) { return '<td class="num">' + money(t.cats[c.key] || 0) + '</td>'; }).join('') +
+        '<td class="num out">' + money(t.out) + '</td>' +
+        '<td class="num left' + (t.leftover < 0 ? ' neg' : '') + '">' + (t.leftover < 0 ? '−' : '') + '฿' + Math.abs(Math.round(t.leftover)).toLocaleString('th-TH') + '</td></tr>';
+
+      box.innerHTML = warn +
+        '<div class="mtable-wrap"><table class="mtable"><thead>' + head + '</thead><tbody>' + rows + '</tbody><tfoot>' + foot + '</tfoot></table></div>' +
+        '<div class="sum-total"><span class="k">คงเหลือสะสมทั้งหมด</span><span class="v">' +
+          (t.leftover < 0 ? '−' : '') + '฿' + Math.abs(Math.round(t.leftover)).toLocaleString('th-TH') + '</span></div>';
+      paintIcons(box);
     }).catch(function (e) { box.innerHTML = '<div class="empty-note">โหลดไม่สำเร็จ: ' + esc(e.message) + '</div>'; });
   }
   function num(v) { if (!v) return 0; var n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; }
@@ -701,6 +776,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       return;
     }
     var sel = up(e.target, '[data-cat-select]'); if (sel) updateDest();
+    if (e.target && e.target.getAttribute && e.target.getAttribute('data-f') === 'date') updateSaveNote();
   });
 
   /* ---------- init ---------- */
