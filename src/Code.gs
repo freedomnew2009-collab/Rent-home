@@ -64,17 +64,17 @@ function isAllowed_() {
  * รูปแบบการตั้งชื่อไฟล์สลิป — ให้ตรงกับที่ใช้ใน Google Drive อยู่แล้ว
  *   prefix      : คำนำหน้า (Rent / ส่วนกลาง / Bank)
  *   dateKey     : ใช้ "วันที่จ่าย" ช่องไหนมาตั้งชื่อ
- *   calendar    : 'greg' = ค.ศ.  |  'buddhist' = พ.ศ. (+543)
+ *   calendar    : 'greg' = ค.ศ. (ใช้ทุกหมวด)  |  'buddhist' = พ.ศ. (+543)
  *   granularity : 'day' = ปี-เดือน-วัน  |  'month' = ปี-เดือน
  *   suffix      : ต่อท้าย (ถ้ามี)
- * ตัวอย่าง: Rent_2026-07-10.jpg | ส่วนกลาง_2569-07-17.jpg | Bank_2026-07-17.jpg
- *           ส่วนกลาง_2569-05_เปลี่ยนนิติ.jpg
+ * ตัวอย่าง: Rent_2026-07-10.jpg | ส่วนกลาง_2026-07-17.jpg | Bank_2026-07-17.jpg
+ *           ส่วนกลาง_2026-05_เปลี่ยนนิติ.jpg
  */
 var SLIP_NAMING = {
   rentSlip:     { prefix: 'Rent',     dateKey: 'rentDate',   calendar: 'greg',     granularity: 'day' },
-  commonSlip:   { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'day' },
+  commonSlip:   { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'greg',     granularity: 'day' },
   extraSlip:    { prefix: 'Bank',     dateKey: 'extraDate',  calendar: 'greg',     granularity: 'day' },
-  juristicSlip: { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'month', suffix: 'เปลี่ยนนิติ' },
+  juristicSlip: { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'greg',     granularity: 'month', suffix: 'เปลี่ยนนิติ' },
   erSlip:       { prefix: 'ER',       dateKey: 'erDate',     calendar: 'greg',     granularity: 'day' },
   goldSlip:     { prefix: 'Gold',     dateKey: 'goldDate',   calendar: 'greg',     granularity: 'day' },
   taxSlip:      { prefix: 'Tax',      dateKey: 'taxDate',    calendar: 'greg',     granularity: 'day' }
@@ -575,11 +575,11 @@ function nextInstallment_(block, map) {
   return 'งวดที่ ' + (max + 1);
 }
 
-/** ป้ายเดือน-ปี (พ.ศ.) จากวันที่ dd/MM/yyyy เช่น "ก.ค. 2569" */
+/** ป้ายเดือน-ปี (ค.ศ.) จากวันที่ dd/MM/yyyy เช่น "ก.ค. 2026" */
 function thaiMonthLabel_(dateStr, fallback) {
   var p = parseThaiDate_(dateStr);
   if (!p) return fallback || '';
-  return THAI_MONTHS_[p.m - 1] + ' ' + (p.y + 543);
+  return THAI_MONTHS_[p.m - 1] + ' ' + p.y;
 }
 
 /** คำนวณสถานะของการจัดสรรจากข้อมูลที่มีในแถว */
