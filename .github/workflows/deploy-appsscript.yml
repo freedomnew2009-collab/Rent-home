@@ -1,12 +1,13 @@
 name: Deploy to Apps Script
 
 # อัปเดตโค้ดขึ้น Google Apps Script อัตโนมัติเมื่อไฟล์ใน src/ เปลี่ยน
+# เรียก Apps Script API ตรง ๆ (ไม่ผ่าน clasp) จึงไม่ผูกกับเวอร์ชัน/รูปแบบไฟล์ของ clasp
 #
 # ต้องตั้ง Secrets ที่: Settings → Secrets and variables → Actions → New repository secret
 #   CLASPRC_JSON  (จำเป็น) เนื้อหาไฟล์ ~/.clasprc.json จากเครื่องที่ `clasp login` แล้ว
-#   SCRIPT_ID     (จำเป็น) รหัสโปรเจกต์ Apps Script — Apps Script → ⚙️ Project Settings → Script ID
-#   DEPLOYMENT_ID (ไม่บังคับ) รหัส deployment ของเว็บแอป ถ้าใส่ไว้จะอัปเดตเวอร์ชันใหม่
-#                 บน URL เดิมให้อัตโนมัติ (ดูได้ที่ Deploy → Manage deployments)
+#   SCRIPT_ID     (จำเป็น) Apps Script → ⚙️ Project Settings → Script ID
+#   DEPLOYMENT_ID (แนะนำ) Deploy → Manage deployments → Deployment ID
+#                 ถ้าใส่ไว้ ระบบจะสร้างเวอร์ชันใหม่บน URL เดิมให้อัตโนมัติ
 
 on:
   push:
@@ -14,12 +15,8 @@ on:
     paths:
       - 'src/**'
       - '.github/workflows/deploy-appsscript.yml'
+      - '.github/scripts/deploy-appsscript.js'
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: 'สร้างเวอร์ชันใหม่ของเว็บแอปด้วย (ต้องมี DEPLOYMENT_ID)'
-        type: boolean
-        default: true
 
 concurrency:
   group: appsscript-deploy
@@ -33,7 +30,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: ตรวจไวยากรณ์ไฟล์ใน src/ ก่อนอัปโหลด
         run: |
@@ -56,57 +53,20 @@ jobs:
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
           SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
-        run: |
-          set -euo pipefail
-          missing=0
-          if [ -z "${CLASPRC_JSON:-}" ]; then
-            echo "::error::ยังไม่ได้ตั้ง secret CLASPRC_JSON (เนื้อหาไฟล์ ~/.clasprc.json)"; missing=1
-          else
-            echo "✓ CLASPRC_JSON ถูกตั้งไว้แล้ว (ตรวจรูปแบบในขั้นตอนถัดไป)"
-          fi
-          if [ -z "${SCRIPT_ID:-}" ]; then
-            echo "::error::ยังไม่ได้ตั้ง secret SCRIPT_ID (Apps Script → Project Settings → Script ID)"; missing=1
-          else
-            echo "✓ SCRIPT_ID ถูกตั้งไว้แล้ว"
-          fi
-          [ "$missing" -eq 0 ] || exit 1
-
-      - name: ติดตั้ง clasp
-        run: npm install --no-save @google/clasp@2.4.2
-
-      - name: เตรียมไฟล์ตั้งค่า clasp
-        env:
-          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
-          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
-        run: |
-          set -euo pipefail
-          # แปลง credential ให้อยู่ในรูปแบบที่ clasp 2.4.x อ่านได้ (รองรับไฟล์จาก clasp v2/v3)
-          node .github/scripts/normalize-clasprc.js "$HOME/.clasprc.json"
-          node -e '
-            const fs=require("fs");
-            fs.writeFileSync(".clasp.json", JSON.stringify({scriptId: process.env.SCRIPT_ID.trim(), rootDir: "src"}));
-          '
-          echo "✓ เตรียมไฟล์ตั้งค่าเรียบร้อย"
-
-      - name: อัปโหลดโค้ดขึ้น Apps Script (clasp push)
-        run: npx clasp push --force
-
-      - name: สร้างเวอร์ชันใหม่ของเว็บแอป (URL เดิม)
-        if: ${{ github.event_name == 'push' || inputs.deploy }}
-        env:
           DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
         run: |
           set -euo pipefail
-          if [ -z "${DEPLOYMENT_ID:-}" ]; then
-            echo "::warning::ไม่ได้ตั้ง secret DEPLOYMENT_ID — อัปโหลดโค้ดแล้วแต่ยังไม่ได้สร้างเวอร์ชันใหม่"
-            echo "ให้ไปกด Deploy → Manage deployments → ✏️ → New version เอง"
-            echo "หรือเพิ่ม secret DEPLOYMENT_ID เพื่อให้ระบบทำให้อัตโนมัติ"
-            exit 0
-          fi
-          npx clasp deploy --deploymentId "$DEPLOYMENT_ID" \
-            --description "auto: ${GITHUB_SHA::7} $(date -u '+%Y-%m-%d %H:%M UTC')"
-          echo "✓ อัปเดตเว็บแอปเป็นเวอร์ชันใหม่แล้ว (URL เดิมไม่เปลี่ยน)"
+          missing=0
+          [ -n "${CLASPRC_JSON:-}" ] || { echo "::error::ยังไม่ได้ตั้ง secret CLASPRC_JSON"; missing=1; }
+          [ -n "${SCRIPT_ID:-}" ] || { echo "::error::ยังไม่ได้ตั้ง secret SCRIPT_ID"; missing=1; }
+          [ -n "${DEPLOYMENT_ID:-}" ] || echo "::warning::ไม่ได้ตั้ง DEPLOYMENT_ID — จะอัปโหลดโค้ดอย่างเดียว"
+          [ "$missing" -eq 0 ] || exit 1
+          echo "✓ Secrets พร้อมใช้งาน"
 
-      - name: ล้างไฟล์ที่มีข้อมูลลับ
-        if: always()
-        run: rm -f "$HOME/.clasprc.json" .clasp.json
+      - name: อัปโหลดขึ้น Apps Script และสร้างเวอร์ชันใหม่
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+          VERSION_NOTE: 'auto ${{ github.sha }}'
+        run: node .github/scripts/deploy-appsscript.js
