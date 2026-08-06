@@ -197,6 +197,15 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
 .mtable th.mth .sub { display: block; font-family: var(--font-body); font-weight: 400; font-size: 10.5px;
   color: color-mix(in srgb, var(--color-text) 50%, transparent); margin-top: 2px; }
 .mtable td.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.mtable .cdate { display: block; font-family: var(--font-body); font-variant-numeric: normal;
+  font-size: 10.5px; font-weight: 400; margin-top: 3px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.mtable .cdate.none { font-style: italic; color: color-mix(in srgb, var(--color-text) 35%, transparent); }
+.mtable .cdate.auto { font-style: italic; color: color-mix(in srgb, var(--color-accent) 70%, transparent); }
+.mtable .slipdot { text-decoration: none; }
+.mtable td.cell-edit { cursor: pointer; }
+.mtable td.cell-edit:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent); }
 .mtable td.zero { color: color-mix(in srgb, var(--color-text) 32%, transparent); }
 .mtable td.in { color: var(--color-accent-800); font-weight: 600; }
 .mtable td.out { font-weight: 600; }
@@ -434,6 +443,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
   var CATS = [];            // จาก getCategories()
   var CATMAP = {};
   var DASH = null;          // dashboard เดือนปัจจุบัน
+  var SUM_MONTHS = [];      // ข้อมูลสรุปรายเดือน (ใช้ตอนแตะช่องในตารางเพื่อแก้ไข)
+  var TARGET_YM = '';       // เดือนที่ตั้งใจจะบันทึก/แก้ไข (yyyy-mm)
   var OFFSET = 0;
   var recordFile = null;    // {name, mimeType, data}
 
@@ -561,6 +572,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
   }
   function openRecord(catKey) {
     switchPanel('record');
+    TARGET_YM = (DASH && DASH.incomeDate) ? ymC(DASH.incomeDate) : '';   // เดือนที่เปิดดูอยู่
     var sel = q('[data-cat-select]'); if (catKey && CATMAP[catKey]) sel.value = catKey;
     updateDest();
     // เติมงวดจากเดือนที่กำลังดู + จำนวนเดิม (ถ้ามี)
@@ -571,29 +583,67 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     updateSaveNote();
     var amt = q('[data-f="amount"]'); if (amt) amt.focus();
   }
+  /**
+   * เปิดฟอร์มบันทึกสำหรับ "เดือน + หมวด" ที่แตะมาจากตารางสรุป
+   * เติมวันที่/ยอด/งวด ของเดือนนั้นให้ เพื่อแก้วันที่โอนหรือแนบสลิปได้ทันที
+   */
+  function openRecordFor(ym, catKey) {
+    var m = SUM_MONTHS.filter(function (x) { return x.ym === ym; })[0];
+    TARGET_YM = ym || '';          // เดือนที่ตั้งใจจะแก้ (มาจากตารางสรุป)
+    switchPanel('record');
+    var sel = q('[data-cat-select]');
+    if (CATMAP[catKey] && !CATMAP[catKey].fixed) sel.value = catKey;
+    updateDest();
+    clearFile();
+    if (!m) { updateSaveNote(); return; }
+    q('[data-f="installment"]').value = m.installment || '';
+    var isRent = (catKey === 'rent');
+    var amount = isRent ? m.income : (m.cats[catKey] || '');
+    var date = isRent ? m.incomeDate : (m.dates[catKey] || '');
+    q('[data-f="amount"]').value = amount || '';
+    // ถ้ายังไม่มีวันที่ ให้ตั้งเป็นวันที่ 10 ของเดือนนั้นเป็นค่าเริ่มต้น
+    q('[data-f="date"]').value = date ? toISODate(date) : (ym ? ym + '-10' : '');
+    updateSaveNote();
+    var d = q('[data-f="date"]'); if (d) d.focus();
+  }
+
   // แสดงว่าจะบันทึกลงเดือน/งวดไหน ตาม "วันที่โอน" ที่กรอก
   var THAI_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  function ymLabel(ym) {
+    var p = String(ym || '').split('-'); if (p.length !== 2) return '';
+    return THAI_M[parseInt(p[1], 10) - 1] + ' ' + (parseInt(p[0], 10) + 543);
+  }
   function updateSaveNote() {
     var note = q('[data-save-note]'); if (!note) return;
     var iso = q('[data-f="date"]').value;
-    if (!iso) { note.textContent = 'เลือก “วันที่โอน” เพื่อระบุเดือนที่จะบันทึก'; note.className = 'save-note'; return; }
+    // เดือนที่ตั้งใจแก้: จากตารางสรุป (ถ้ามี) ไม่งั้นใช้เดือนที่เปิดดูบนหน้าจัดเงิน
+    var intended = TARGET_YM || (DASH && DASH.incomeDate ? ymC(DASH.incomeDate) : '');
+    if (!iso) {
+      note.textContent = intended
+        ? 'กำลังแก้ของเดือน ' + ymLabel(intended) + ' — เลือก “วันที่โอน” ให้อยู่ในเดือนนี้'
+        : 'เลือก “วันที่โอน” เพื่อระบุเดือนที่จะบันทึก';
+      note.className = 'save-note'; return;
+    }
     var p = iso.split('-');
-    var label = THAI_M[parseInt(p[1], 10) - 1] + ' ' + (parseInt(p[0], 10) + 543);
-    var viewing = DASH && DASH.installment ? DASH.installment : '';
-    var sameMonth = DASH && DASH.incomeDate && ymC(DASH.incomeDate) === (p[0] + '-' + p[1]);
-    if (sameMonth) {
-      note.textContent = '📌 จะบันทึกลงเดือน ' + label + (viewing ? ' (' + viewing + ')' : '');
+    var ym = p[0] + '-' + p[1];
+    var label = ymLabel(ym);
+    if (!intended || ym === intended) {
+      note.textContent = '📌 จะบันทึกลงเดือน ' + label;
       note.className = 'save-note';
     } else {
-      // คนละเดือนกับที่กำลังดู -> ล้างชื่องวดของเดือนเดิม กันบันทึกผิดงวด
-      var inst = q('[data-f="installment"]');
-      if (inst && viewing && inst.value.trim() === viewing) inst.value = '';
-      note.textContent = '📌 จะบันทึกลงเดือน ' + label + ' — เป็นคนละเดือนกับที่กำลังดู ระบบจะสร้าง/ใช้งวดของเดือนนั้น';
+      note.textContent = '⚠️ วันที่ที่เลือกเป็นเดือน ' + label + ' แต่คุณกำลังแก้ของเดือน ' +
+        ymLabel(intended) + ' — ถ้าบันทึกตอนนี้ข้อมูลจะไปลงเดือน ' + label +
+        ' แก้วันที่ให้เป็นเดือน ' + ymLabel(intended) + ' ก่อนบันทึก';
       note.className = 'save-note warn';
+      // ล้างชื่องวดของเดือนอื่น กันงวดซ้ำ
+      var inst = q('[data-f="installment"]');
+      var otherInst = (DASH && DASH.installment) || '';
+      if (inst && otherInst && inst.value.trim() === otherInst && TARGET_YM && ym !== TARGET_YM) inst.value = '';
     }
   }
 
   function resetRecord() {
+    TARGET_YM = '';
     q('[data-f="amount"]').value = ''; q('[data-f="date"]').value = ''; q('[data-f="installment"]').value = '';
     clearFile();
     if (CATS.length) q('[data-cat-select]').value = CATS[0].key;
@@ -688,16 +738,30 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
           '<div class="a-body"><b>พบเดือนที่มีข้อมูลซ้ำ ' + t.dupCount + ' เดือน</b> — ดูแถวที่ทำเครื่องหมาย “ซ้ำ” ด้านล่าง แล้วลบแถวเกินในชีต</div></div>'
         : '';
 
-      // ตารางรายเดือน (เก่า -> ใหม่)
+      // ตารางรายเดือน (เก่า -> ใหม่) — แต่ละช่อง: ยอด + วันที่โอน + สลิป (แตะเพื่อแก้ไข/แนบสลิป)
+      SUM_MONTHS = months;
       var rows = months.map(function (m) {
         var cells = outCats.map(function (c) {
           var v = m.cats[c.key] || 0;
-          return '<td class="num' + (v ? '' : ' zero') + '">' + (v ? money(v) : '–') + '</td>';
+          if (c.fixed) {
+            return '<td class="num' + (v ? '' : ' zero') + '">' + (v ? money(v) : '–') +
+              '<span class="cdate auto">อัตโนมัติ</span></td>';
+          }
+          var d = m.dates[c.key] || '', slip = m.slips[c.key] || '';
+          var sub = d
+            ? '<span class="cdate">' + esc(d) + (isUrl(slip) ? ' <a class="slipdot" href="' + esc(slip) + '" target="_blank" rel="noopener" title="ดูสลิป">📎</a>' : '') + '</span>'
+            : '<span class="cdate none">ยังไม่ได้โอน</span>';
+          return '<td class="num cell-edit' + (v ? '' : ' zero') + '" data-edit-ym="' + esc(m.ym) + '" data-edit-cat="' + c.key + '" title="แตะเพื่อแก้วันที่ / แนบสลิป">' +
+            (v ? money(v) : '–') + sub + '</td>';
         }).join('');
+        var inSub = m.incomeDate
+          ? '<span class="cdate">' + esc(m.incomeDate) + (isUrl(m.incomeSlip) ? ' <a class="slipdot" href="' + esc(m.incomeSlip) + '" target="_blank" rel="noopener" title="ดูสลิป">📎</a>' : '') + '</span>'
+          : '<span class="cdate none">—</span>';
         return '<tr' + (m.dup ? ' class="dup"' : '') + '>' +
           '<th class="mth">' + esc(m.label) + (m.dup ? ' <span class="dup-tag">ซ้ำ ' + m.rowCount + ' แถว</span>' : '') +
             '<span class="sub">' + esc(m.installment || '') + ' · แถว ' + m.rows.join(', ') + '</span></th>' +
-          '<td class="num in">' + (m.income ? money(m.income) : '–') + '</td>' +
+          '<td class="num in cell-edit" data-edit-ym="' + esc(m.ym) + '" data-edit-cat="rent" title="แตะเพื่อแก้วันที่ / แนบสลิป">' +
+            (m.income ? money(m.income) : '–') + inSub + '</td>' +
           cells +
           '<td class="num out">' + money(m.out) + '</td>' +
           '<td class="num left' + (m.leftover < 0 ? ' neg' : '') + '">' + (m.leftover < 0 ? '−' : '') + '฿' + Math.abs(Math.round(m.leftover)).toLocaleString('th-TH') + '</td>' +
@@ -748,6 +812,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var nav = up(e.target, '[data-nav]'); if (nav) { e.preventDefault(); switchPanel(nav.getAttribute('data-nav')); return; }
     var slip = up(e.target, '[data-open-slip]'); if (slip) { window.open(slip.getAttribute('data-open-slip'), '_blank'); return; }
     var rec = up(e.target, '[data-open-record]'); if (rec) { openRecord(rec.getAttribute('data-open-record')); return; }
+    var cell = up(e.target, '[data-edit-ym]');
+    if (cell) { openRecordFor(cell.getAttribute('data-edit-ym'), cell.getAttribute('data-edit-cat')); return; }
     var sub = up(e.target, '[data-action="submit-record"]'); if (sub) { e.preventDefault(); submitRecord(); return; }
     var rst = up(e.target, '[data-action="reset-record"]'); if (rst) { e.preventDefault(); resetRecord(); return; }
     var rf = up(e.target, '[data-action="refresh"]'); if (rf) { loadDashboard(OFFSET); toast('รีเฟรชแล้ว'); return; }

@@ -74,7 +74,10 @@ var SLIP_NAMING = {
   rentSlip:     { prefix: 'Rent',     dateKey: 'rentDate',   calendar: 'greg',     granularity: 'day' },
   commonSlip:   { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'day' },
   extraSlip:    { prefix: 'Bank',     dateKey: 'extraDate',  calendar: 'greg',     granularity: 'day' },
-  juristicSlip: { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'month', suffix: 'เปลี่ยนนิติ' }
+  juristicSlip: { prefix: 'ส่วนกลาง', dateKey: 'commonDate', calendar: 'buddhist', granularity: 'month', suffix: 'เปลี่ยนนิติ' },
+  erSlip:       { prefix: 'ER',       dateKey: 'erDate',     calendar: 'greg',     granularity: 'day' },
+  goldSlip:     { prefix: 'Gold',     dateKey: 'goldDate',   calendar: 'greg',     granularity: 'day' },
+  taxSlip:      { prefix: 'Tax',      dateKey: 'taxDate',    calendar: 'greg',     granularity: 'day' }
 };
 
 /**
@@ -89,9 +92,10 @@ var CATEGORIES = [
   { key: 'loan',   name: 'ค่าผ่อนบ้าน',         dest: 'ตัดจากเงินเดือน',    fixed: true, defaultAmount: 3000, startYM: '2025-01', color: 'var(--color-accent-600)' },
   { key: 'extra',  name: 'ผ่อนบ้านเพิ่มเติม',   dest: 'ธนาคาร',             dateKey: 'extraDate',  amtKey: 'extraAmount',  slipKey: 'extraSlip',  color: 'var(--color-accent-700)' },
   { key: 'common', name: 'ค่าส่วนกลาง',         dest: 'นิติบุคคลหมู่บ้าน',   dateKey: 'commonDate', amtKey: 'commonAmount', slipKey: 'commonSlip', color: 'var(--color-accent-500)' },
-  { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: null,         color: 'var(--color-accent-400)' },
-  { key: 'gold',   name: 'ลงทุนทองคำ',          dest: 'ออมทองคำ',           dateKey: 'goldDate',   amtKey: 'goldAmount',   slipKey: null,         color: 'var(--color-accent-2-600)' },
-  { key: 'tax',    name: 'กันภาษี',             dest: 'บัญชีภาษี',          dateKey: 'taxDate',    amtKey: 'taxAmount',    slipKey: null,         color: 'var(--color-accent-2-400)' }
+  // slipOptional = แนบสลิปได้ แต่ไม่บังคับ (ไม่มีสลิปก็นับว่าจ่ายแล้ว)
+  { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: 'erSlip',   slipOptional: true, color: 'var(--color-accent-400)' },
+  { key: 'gold',   name: 'ลงทุนทองคำ',          dest: 'ออมทองคำ',           dateKey: 'goldDate',   amtKey: 'goldAmount',   slipKey: 'goldSlip', slipOptional: true, color: 'var(--color-accent-2-600)' },
+  { key: 'tax',    name: 'กันภาษี',             dest: 'บัญชีภาษี',          dateKey: 'taxDate',    amtKey: 'taxAmount',    slipKey: 'taxSlip',  slipOptional: true, color: 'var(--color-accent-2-400)' }
 ];
 
 /**
@@ -126,8 +130,51 @@ var FIELDS = [
   { key: 'goldAmount',  header: 'Gold now',               defaultCol: 14, label: 'จำนวนเงิน',    type: 'number', section: 'gold' },
 
   { key: 'taxDate',     header: 'วันที่เตรยมจ่ายภาษี',    defaultCol: 15, label: 'วันที่เตรียมจ่าย', type: 'date', section: 'tax' },
-  { key: 'taxAmount',   header: 'เงินจ่ายภาษี',           defaultCol: 16, label: 'จำนวนเงิน',    type: 'number', section: 'tax' }
+  { key: 'taxAmount',   header: 'เงินจ่ายภาษี',           defaultCol: 16, label: 'จำนวนเงิน',    type: 'number', section: 'tax' },
+
+  // ช่องสลิปเพิ่มเติม (คอลัมน์ใหม่ — ระบบเพิ่มหัวคอลัมน์ให้อัตโนมัติเมื่อใช้ครั้งแรก)
+  { key: 'erSlip',      header: 'สลิปเก็บ ER',            defaultCol: 17, label: 'สลิป ER',      type: 'file',   section: 'er' },
+  { key: 'goldSlip',    header: 'สลิปลงทุนทองคำ',         defaultCol: 18, label: 'สลิปทองคำ',    type: 'file',   section: 'gold' },
+  { key: 'taxSlip',     header: 'สลิปจ่ายภาษี',           defaultCol: 19, label: 'สลิปภาษี',     type: 'file',   section: 'tax' }
 ];
+
+/** ช่องสลิปที่ระบบเพิ่มหัวคอลัมน์ให้เองถ้ายังไม่มีในชีต */
+var AUTO_SLIP_FIELDS = ['erSlip', 'goldSlip', 'taxSlip'];
+
+/**
+ * เพิ่มหัวคอลัมน์สลิปที่ยังไม่มีในชีต — ปลอดภัยกับข้อมูลเดิม
+ * ถ้าคอลัมน์ตำแหน่งเริ่มต้นมีข้อมูลอยู่ จะไปสร้างคอลัมน์ใหม่ท้ายตารางแทน
+ */
+function ensureSlipHeaders_(sheet, hr) {
+  var lastRow = sheet.getLastRow();
+  AUTO_SLIP_FIELDS.forEach(function (key) {
+    var f = null;
+    for (var i = 0; i < FIELDS.length; i++) { if (FIELDS[i].key === key) { f = FIELDS[i]; break; } }
+    if (!f) return;
+
+    var lastCol = Math.max(sheet.getLastColumn(), 1);
+    var headers = sheet.getRange(hr, 1, 1, lastCol).getValues()[0].map(function (h) {
+      return String(h == null ? '' : h).replace(/\s+/g, ' ').trim();
+    });
+    if (headers.indexOf(f.header) >= 0) return;         // มีหัวคอลัมน์นี้อยู่แล้ว
+
+    // คอลัมน์ตำแหน่งเริ่มต้นใช้ได้ไหม (หัวว่าง และไม่มีข้อมูลด้านล่าง)
+    var col = f.defaultCol + 1, usable = false;
+    if (col <= lastCol && headers[f.defaultCol] === '') {
+      usable = true;
+      if (lastRow > hr) {
+        var vals = sheet.getRange(hr + 1, col, lastRow - hr, 1).getValues();
+        for (var r = 0; r < vals.length; r++) {
+          if (String(vals[r][0]).trim() !== '') { usable = false; break; }
+        }
+      }
+    } else if (col > lastCol) {
+      usable = true;                                     // เลยขอบตาราง = คอลัมน์ว่าง
+    }
+    if (!usable) col = sheet.getLastColumn() + 1;        // มีข้อมูลปน -> ต่อท้ายตาราง
+    sheet.getRange(hr, col).setValue(f.header);
+  });
+}
 
 // ข้อมูลของแต่ละกลุ่ม (ใช้แสดงหัวข้อ/ไอคอนบนหน้าเว็บ)
 var SECTIONS = [
@@ -542,10 +589,10 @@ function deriveStatus_(cat, amt, dateStr, slip) {
   var hasSlip = slip && /^https?:\/\//.test(String(slip));
   if (!hasAmt && !hasDate && !hasSlip) return 'none';   // ยังไม่ตั้ง/ข้ามเดือนนี้
   if (hasSlip) return 'paid';
-  if (cat.slipKey) {                       // หมวดที่ต้องมีสลิป
+  if (cat.slipKey && !cat.slipOptional) {  // หมวดที่ต้องมีสลิป
     return (hasAmt && hasDate) ? 'waiting_slip' : 'waiting_transfer';
   }
-  return (hasAmt && hasDate) ? 'paid' : 'waiting_transfer';   // หมวดที่ไม่มีช่องสลิป
+  return (hasAmt && hasDate) ? 'paid' : 'waiting_transfer';   // หมวดที่สลิปไม่บังคับ
 }
 
 /**
@@ -620,6 +667,7 @@ function saveAllocation(payload) {
 
     var sheet = getSheet_();
     var hr = headerRow_(sheet);
+    if (payload.slip && payload.slip.data) ensureSlipHeaders_(sheet, hr);  // เพิ่มคอลัมน์สลิปถ้ายังไม่มี
     var map = getColumnMap_(sheet);
     var width = Math.max(sheet.getLastColumn(), maxColumnIndex_(map) + 1);
     var installment = String(payload.installment || '').trim();
@@ -707,7 +755,8 @@ function getCategories() {
   return CATEGORIES.map(function (c) {
     return {
       key: c.key, name: c.name, dest: c.dest, color: c.color,
-      income: !!c.income, hasSlip: !!c.slipKey, fixed: !!c.fixed, defaultAmount: c.defaultAmount || 0,
+      income: !!c.income, hasSlip: !!c.slipKey, slipOptional: !!c.slipOptional,
+      fixed: !!c.fixed, defaultAmount: c.defaultAmount || 0,
       startYM: c.startYM || '', amtKey: c.amtKey, dateKey: c.dateKey, slipKey: c.slipKey
     };
   });
@@ -736,11 +785,15 @@ function getMonthlySummary() {
     var m = {
       ym: g.ym,
       label: g.ym ? thaiMonthLabel_('01/' + g.ym.split('-')[1] + '/' + g.ym.split('-')[0], '') : '(ไม่มีวันที่)',
-      installment: '', income: 0, out: 0, dup: g.count > 1, rowCount: g.count,
-      rows: [], cats: {}
+      installment: '', income: 0, incomeDate: '', incomeSlip: '',
+      out: 0, dup: g.count > 1, rowCount: g.count,
+      rows: [], cats: {}, dates: {}, slips: {}, mainRow: 0
     };
     g.rows.forEach(function (r) {
       if (!m.installment && r.installment) m.installment = r.installment;
+      if (!m.mainRow) m.mainRow = r.row;
+      if (!m.incomeDate && r.rentDate) m.incomeDate = r.rentDate;
+      if (!m.incomeSlip && r.rentSlip) m.incomeSlip = r.rentSlip;
       m.rows.push(r.row);
       m.income += toNumber_(r.rentAmount);
       CATEGORIES.forEach(function (c) {
@@ -748,6 +801,9 @@ function getMonthlySummary() {
         var amt = c.fixed ? 0 : toNumber_(r[c.amtKey]);   // fixed คิดรวมด้านล่าง
         if (!m.cats[c.key]) m.cats[c.key] = 0;
         m.cats[c.key] += amt;
+        if (c.fixed) return;
+        if (!m.dates[c.key] && r[c.dateKey]) m.dates[c.key] = r[c.dateKey];       // วันที่โอน
+        if (c.slipKey && !m.slips[c.key] && r[c.slipKey]) m.slips[c.key] = r[c.slipKey];
       });
     });
     // หมวดคงที่ (ค่าผ่อนบ้าน) — นับ 1 ครั้งต่อเดือน ถ้าเดือนนั้น >= startYM
