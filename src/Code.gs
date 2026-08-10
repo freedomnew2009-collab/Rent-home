@@ -817,6 +817,35 @@ function getCategories() {
   });
 }
 
+/**
+ * เลขงวดของเดือนหนึ่ง — ให้ระบบเติมให้อัตโนมัติ
+ *   - ถ้ามีแถวของเดือนนั้นแล้ว   -> ใช้งวดเดิมของแถวนั้น
+ *   - ถ้ายังไม่มี (เดือนใหม่)     -> เลขงวดถัดไปจากที่มากสุด
+ * @param {string} dateStr วันที่ dd/MM/yyyy (หรือ yyyy-mm)
+ * @return {Object} { installment, isNew, monthLabel }
+ */
+function getInstallmentFor(dateStr) {
+  if (!isAllowed_()) return { installment: '', isNew: false, monthLabel: '' };
+  var ym = '';
+  var s = String(dateStr || '').trim();
+  if (/^\d{4}-\d{2}$/.test(s)) ym = s;
+  else ym = ymOf_(s);
+  if (!ym) return { installment: '', isNew: false, monthLabel: '' };
+
+  var recs = getRecords();
+  var max = 0, found = '';
+  recs.forEach(function (r) {
+    var rym = ymOf_(r.rentDate) || ymOf_(r.commonDate) || ymOf_(r.extraDate) || '';
+    var m = String(r.installment || '').match(/(\d+)/);
+    if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+    if (rym === ym && !found && r.installment) found = String(r.installment);
+  });
+
+  var label = thaiMonthLabel_('01/' + ym.split('-')[1] + '/' + ym.split('-')[0], '');
+  if (found) return { installment: found, isNew: false, monthLabel: label };
+  return { installment: 'งวดที่ ' + (max + 1), isNew: true, monthLabel: label };
+}
+
 /** =========================================================================
  *  โอนรวบหลายเดือน (สำหรับหมวดที่กันเงินไว้ทุกเดือนแล้วโอนทีเดียว)
  *  ========================================================================= */

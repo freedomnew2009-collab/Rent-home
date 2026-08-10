@@ -156,6 +156,12 @@ body { background: var(--color-bg); color: var(--color-text); font-family: var(-
 .record .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 22px 0; }
 .record .grid .full { grid-column: 1 / -1; }
 .field > label { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 7px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+.auto-tag { display: inline-block; text-transform: none; letter-spacing: 0; font-size: 10px; font-weight: 600;
+  color: var(--color-accent-800); background: var(--color-accent-100); border-radius: 999px; padding: 1px 8px; margin-left: 4px; }
+.auto-tag.hide { display: none; }
+.link-mini { background: none; border: 0; cursor: pointer; font: inherit; text-transform: none; letter-spacing: 0;
+  font-size: 11px; color: var(--color-accent-700); text-decoration: underline; margin-left: 6px; padding: 0; }
+.finput[readonly] { color: color-mix(in srgb, var(--color-text) 70%, transparent); background: color-mix(in srgb, var(--color-text) 3%, transparent); }
 .finput { width: 100%; font: inherit; font-size: 15px; color: var(--color-text); background: transparent; padding: 10px 0;
   border: 0; border-bottom: 1px solid var(--color-neutral-400); border-radius: 0; }
 .finput:focus { outline: none; border-bottom-color: var(--color-accent); }
@@ -379,7 +385,11 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
             </div>
             <div class="field"><label>จำนวนเงิน (บาท)</label><input class="finput" type="number" step="0.01" inputmode="decimal" data-f="amount" placeholder="0.00"></div>
             <div class="field"><label>วันที่โอน</label><input class="finput" type="date" data-f="date"></div>
-            <div class="field full"><label>งวด / เดือน</label><input class="finput" type="text" data-f="installment" placeholder="เช่น งวดที่ 19"></div>
+            <div class="field full">
+              <label>งวด / เดือน <span class="auto-tag" data-inst-auto>อัตโนมัติ</span>
+                <button type="button" class="link-mini" data-inst-edit>แก้เอง</button></label>
+              <input class="finput" type="text" data-f="installment" placeholder="เลือกวันที่โอนก่อน — ระบบจะเติมให้" readonly>
+            </div>
             <div class="field full"><div class="save-note" data-save-note>เลือก “วันที่โอน” เพื่อระบุเดือนที่จะบันทึก</div></div>
           </div>
 
@@ -697,11 +707,12 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var sel = q('[data-cat-select]'); if (catKey && CATMAP[catKey]) sel.value = catKey;
     updateDest();
     // เติมงวดจากเดือนที่กำลังดู + จำนวนเดิม (ถ้ามี)
-    if (DASH && DASH.installment) q('[data-f="installment"]').value = DASH.installment;
+    q('[data-f="installment"]').value = '';   // ระบบจะเติมงวดให้เองตามวันที่ที่เลือก
     var alloc = DASH && DASH.allocations ? DASH.allocations.filter(function (a) { return a.key === catKey; })[0] : null;
     if (catKey === 'rent' && DASH) { q('[data-f="amount"]').value = DASH.income || ''; if (DASH.incomeDate) q('[data-f="date"]').value = toISODate(DASH.incomeDate); }
     else if (alloc) { q('[data-f="amount"]').value = alloc.amount || ''; if (alloc.date) q('[data-f="date"]').value = toISODate(alloc.date); }
     updateSaveNote();
+    autoFillInstallment();
     var amt = q('[data-f="amount"]'); if (amt) amt.focus();
   }
   /**
@@ -717,7 +728,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     updateDest();
     clearFile();
     if (!m) { updateSaveNote(); return; }
-    q('[data-f="installment"]').value = m.installment || '';
+    q('[data-f="installment"]').value = m.installment || '';   // งวดของเดือนที่แตะมา
     var isRent = (catKey === 'rent');
     var amount = isRent ? m.income : (m.cats[catKey] || '');
     var date = isRent ? m.incomeDate : (m.dates[catKey] || '');
@@ -725,11 +736,43 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     // ถ้ายังไม่มีวันที่ ให้ตั้งเป็นวันที่ 10 ของเดือนนั้นเป็นค่าเริ่มต้น
     q('[data-f="date"]').value = date ? toISODate(date) : (ym ? ym + '-10' : '');
     updateSaveNote();
+    autoFillInstallment();
     var d = q('[data-f="date"]'); if (d) d.focus();
   }
 
   // แสดงว่าจะบันทึกลงเดือน/งวดไหน ตาม "วันที่โอน" ที่กรอก
   var THAI_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  /* ---------- เติมเลขงวดอัตโนมัติ ---------- */
+  var INST_MANUAL = false;   // ผู้ใช้กด "แก้เอง" หรือยัง
+
+  function setInstManual(on) {
+    INST_MANUAL = !!on;
+    var inp = q('[data-f="installment"]');
+    var tag = q('[data-inst-auto]');
+    var btn = q('[data-inst-edit]');
+    if (inp) inp.readOnly = !on;
+    if (tag) tag.classList.toggle('hide', !!on);
+    if (btn) btn.textContent = on ? 'ให้ระบบเติมเอง' : 'แก้เอง';
+    if (on && inp) inp.focus();
+  }
+
+  /** ถามเซิร์ฟเวอร์ว่าเดือนของวันที่นี้คืองวดอะไร แล้วเติมให้ */
+  function autoFillInstallment() {
+    if (INST_MANUAL) return;
+    var iso = q('[data-f="date"]').value;
+    var inp = q('[data-f="installment"]');
+    if (!iso) { inp.value = ''; return; }
+    var p = iso.split('-');
+    srun('getInstallmentFor', p[0] + '-' + p[1]).then(function (res) {
+      if (INST_MANUAL) return;                       // ผู้ใช้เปลี่ยนไปแก้เองระหว่างรอ
+      if (res && res.installment) {
+        inp.value = res.installment;
+        var tag = q('[data-inst-auto]');
+        if (tag) tag.textContent = res.isNew ? 'อัตโนมัติ · งวดใหม่' : 'อัตโนมัติ · งวดเดิม';
+      }
+    }).catch(function () { /* เติมไม่ได้ก็ปล่อยว่าง — เซิร์ฟเวอร์จะตั้งให้ตอนบันทึก */ });
+  }
+
   function ymLabel(ym) {
     var p = String(ym || '').split('-'); if (p.length !== 2) return '';
     return THAI_M[parseInt(p[1], 10) - 1] + ' ' + parseInt(p[0], 10);   // ค.ศ.
@@ -768,6 +811,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     BATCH.picked = {};
     setBatchMode(false);
     q('[data-f="amount"]').value = ''; q('[data-f="date"]').value = ''; q('[data-f="installment"]').value = '';
+    setInstManual(false);
     clearFile();
     if (CATS.length) q('[data-cat-select]').value = CATS[0].key;
     updateDest();
@@ -941,6 +985,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var sub = up(e.target, '[data-action="submit-record"]');
     if (sub) { e.preventDefault(); if (isBatchMode()) submitBatch(); else submitRecord(); return; }
     var rst = up(e.target, '[data-action="reset-record"]'); if (rst) { e.preventDefault(); resetRecord(); return; }
+    var ie = up(e.target, '[data-inst-edit]');
+    if (ie) { e.preventDefault(); setInstManual(!INST_MANUAL); if (!INST_MANUAL) autoFillInstallment(); return; }
     var rf = up(e.target, '[data-action="refresh"]'); if (rf) { loadDashboard(OFFSET); toast('รีเฟรชแล้ว'); return; }
     var mo = up(e.target, '[data-month]'); if (mo) {
       var dir = mo.getAttribute('data-month');
@@ -967,7 +1013,9 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
       return;
     }
     var sel = up(e.target, '[data-cat-select]'); if (sel) updateDest();
-    if (e.target && e.target.getAttribute && e.target.getAttribute('data-f') === 'date' && !isBatchMode()) updateSaveNote();
+    if (e.target && e.target.getAttribute && e.target.getAttribute('data-f') === 'date' && !isBatchMode()) {
+      updateSaveNote(); autoFillInstallment();
+    }
     if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-batch-on')) { setBatchMode(e.target.checked); return; }
     if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-batch-ym')) {
       BATCH.picked[e.target.getAttribute('data-batch-ym')] = e.target.checked;
