@@ -184,6 +184,21 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
 .btn-text { background: none; border: 0; cursor: pointer; font: inherit; font-size: 14px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 .btn-text:hover { color: var(--color-text); }
 
+/* ยอดเดือนที่แล้ว + ข้อความคัดลอกตอนโอน */
+.e-prev { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px;
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: color-mix(in srgb, var(--color-text) 62%, transparent); font-style: normal; }
+.notechip { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 9px 12px;
+  border: 1px dashed var(--color-accent-400); border-radius: 10px; cursor: pointer; text-align: left;
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent); font: inherit; }
+.notechip:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.notechip .ic { width: 15px; height: 15px; color: var(--color-accent-700); flex: none; }
+.notechip .nt { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--color-accent-800); }
+.notechip .cp { font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent); }
+.notechip.copied { border-style: solid; border-color: var(--color-accent); }
+.notechip.copied .cp::after { content: " ✓"; }
+
 /* โอนรวบหลายเดือน */
 .batch { margin: 6px 0 2px; }
 .batch-toggle { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 12px 0; }
@@ -391,6 +406,7 @@ select.finput { appearance: none; -webkit-appearance: none; cursor: pointer; }
               <input class="finput" type="text" data-f="installment" placeholder="เลือกวันที่โอนก่อน — ระบบจะเติมให้" readonly>
             </div>
             <div class="field full"><div class="save-note" data-save-note>เลือก “วันที่โอน” เพื่อระบุเดือนที่จะบันทึก</div></div>
+            <div class="field full hide" data-rec-note></div>
           </div>
 
           <!-- โอนรวบหลายเดือน (เฉพาะหมวดที่กันเงินไว้ทุกเดือน: ER / ทองคำ / ภาษี) -->
@@ -593,11 +609,42 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     var dest = (a.status === 'auto')
       ? '<span class="to">' + esc(a.dest) + '</span> · ทุกเดือน'
       : 'โอนไป <span class="to">' + esc(a.dest) + '</span>' + (a.date ? ' · ' + esc(a.date) : '');
+    // เดือนที่แล้วโอนเท่าไร — ช่วยให้กดโอนยอดเดิมได้เลย
+    var prev = (a.prevAmount > 0 && a.status !== 'auto')
+      ? '<span class="e-prev">เดือนที่แล้ว ' + money(a.prevAmount) + '</span>' : '';
+    // ข้อความสำหรับคัดลอกไปใส่ตอนโอน (เฉพาะรายการที่ยังไม่ได้โอน)
+    var unpaid = (a.status === 'waiting_transfer' || a.status === 'overdue' || a.status === 'accrued' || a.status === 'none');
+    var note = (a.note && unpaid)
+      ? '<button class="notechip" data-copy="' + esc(a.note) + '" title="แตะเพื่อคัดลอก">' +
+        '<span class="ic" data-ic="paperclip"></span><span class="nt">' + esc(a.note) + '</span>' +
+        '<span class="cp">คัดลอก</span></button>' : '';
     return '<div class="entry" data-task="' + a.key + '" data-status="' + a.status + '">' +
       '<div class="top"><div class="e-name"><span class="dot" style="background:' + a.color + '"></span>' + esc(a.name) + '</div>' +
       '<div class="e-amt">' + (a.amount > 0 ? money(a.amount) : '—') + '</div></div>' +
-      '<div class="bottom"><div class="e-dest">' + dest + '</div>' +
-      '<div class="e-side"><span>' + statHTML(a.status) + '</span><span>' + actHTML(a) + '</span></div></div></div>';
+      '<div class="bottom"><div class="e-dest">' + dest + prev + '</div>' +
+      '<div class="e-side"><span>' + statHTML(a.status) + '</span><span>' + actHTML(a) + '</span></div></div>' +
+      note + '</div>';
+  }
+
+  /** คัดลอกข้อความ (รองรับ iframe ของ Apps Script ที่ clipboard API อาจถูกบล็อก) */
+  function copyText(text, el) {
+    function done() {
+      toast('คัดลอกแล้ว: ' + text);
+      if (el) { el.classList.add('copied'); setTimeout(function () { el.classList.remove('copied'); }, 1400); }
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      if (ok) done(); else toast('คัดลอกไม่ได้ — กดค้างที่ข้อความเพื่อคัดลอกเอง', 1);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(fallback);
+    } else fallback();
   }
 
   /* ---------- record form ---------- */
@@ -618,7 +665,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
   }
 
   /* ---------- โอนรวบหลายเดือน ---------- */
-  var BATCH = { months: [], picked: {} };
+  var BATCH = { months: [], picked: {}, noteBase: '' };
 
   /** แสดง/ซ่อนกล่อง "โอนรวบหลายเดือน" ตามหมวดที่เลือก */
   function setupBatchFor(c) {
@@ -635,6 +682,7 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     list.innerHTML = '<div class="empty-note" style="padding:14px 0">กำลังโหลดเดือนที่ยังไม่ได้โอน…</div>';
     srun('getPendingMonths', catKey).then(function (res) {
       BATCH.months = (res && res.months) || [];
+      BATCH.noteBase = (res && res.noteBase) || '';
       BATCH.picked = {};
       if (!BATCH.months.length) {
         list.innerHTML = '<div class="empty-note" style="padding:14px 0">ไม่มีเดือนค้าง — โอนครบทุกเดือนแล้ว ✓</div>';
@@ -675,6 +723,23 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     });
     setText('[data-batch-count]', keys.length);
     setText('[data-batch-total]', money(total));
+    // ข้อความคัดลอกของช่วงเดือนที่เลือก เช่น "เงินสำรองฉุกเฉิน พ.ค.-ก.ค.69"
+    var picked = BATCH.months.filter(function (m) { return BATCH.picked[m.ym]; });
+    var note = '';
+    if (picked.length === 1) note = picked[0].note || '';
+    else if (picked.length > 1 && BATCH.noteBase) {
+      var a = beMonth(picked[0].ym), b = beMonth(picked[picked.length - 1].ym);
+      if (picked[0].ym.split('-')[0] === picked[picked.length - 1].ym.split('-')[0]) a = a.replace(/\d{2}$/, '');
+      note = BATCH.noteBase + ' ' + a + '-' + b;
+    }
+    showRecordNote(note ? { note: note } : null);
+  }
+
+  /** เดือน-ปี พ.ศ. ย่อ เช่น '2026-07' -> 'ก.ค.69' */
+  function beMonth(ym) {
+    var p = String(ym || '').split('-'); if (p.length !== 2) return '';
+    var be = (parseInt(p[0], 10) + 543) % 100;
+    return THAI_M[parseInt(p[1], 10) - 1] + (be < 10 ? '0' : '') + be;
   }
 
   function submitBatch() {
@@ -710,10 +775,28 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
     q('[data-f="installment"]').value = '';   // ระบบจะเติมงวดให้เองตามวันที่ที่เลือก
     var alloc = DASH && DASH.allocations ? DASH.allocations.filter(function (a) { return a.key === catKey; })[0] : null;
     if (catKey === 'rent' && DASH) { q('[data-f="amount"]').value = DASH.income || ''; if (DASH.incomeDate) q('[data-f="date"]').value = toISODate(DASH.incomeDate); }
-    else if (alloc) { q('[data-f="amount"]').value = alloc.amount || ''; if (alloc.date) q('[data-f="date"]').value = toISODate(alloc.date); }
+    else if (alloc) {
+      // ยอดเดือนนี้ ถ้ายังไม่มีให้ใช้ยอดเดือนที่แล้ว (ส่วนใหญ่โอนเท่าเดิมทุกเดือน)
+      q('[data-f="amount"]').value = alloc.amount || alloc.prevAmount || '';
+      if (alloc.date) q('[data-f="date"]').value = toISODate(alloc.date);
+    }
+    showRecordNote(alloc);
     updateSaveNote();
     autoFillInstallment();
     var amt = q('[data-f="amount"]'); if (amt) amt.focus();
+  }
+
+  /** แสดงข้อความสำหรับคัดลอกในหน้าบันทึก */
+  function showRecordNote(alloc) {
+    var box = q('[data-rec-note]'); if (!box) return;
+    var note = alloc && alloc.note ? alloc.note : '';
+    box.innerHTML = note
+      ? '<button class="notechip" data-copy="' + esc(note) + '" title="แตะเพื่อคัดลอก">' +
+        '<span class="ic" data-ic="paperclip"></span><span class="nt">' + esc(note) + '</span>' +
+        '<span class="cp">คัดลอก</span></button>'
+      : '';
+    box.classList.toggle('hide', !note);
+    paintIcons(box);
   }
   /**
    * เปิดฟอร์มบันทึกสำหรับ "เดือน + หมวด" ที่แตะมาจากตารางสรุป
@@ -979,6 +1062,8 @@ window.__ICONS = {"lucide":{"house":"<svg class=\"ico\" xmlns=\"http://www.w3.or
   document.addEventListener('click', function (e) {
     var nav = up(e.target, '[data-nav]'); if (nav) { e.preventDefault(); switchPanel(nav.getAttribute('data-nav')); return; }
     var slip = up(e.target, '[data-open-slip]'); if (slip) { window.open(slip.getAttribute('data-open-slip'), '_blank'); return; }
+    var cp = up(e.target, '[data-copy]');
+    if (cp) { e.preventDefault(); copyText(cp.getAttribute('data-copy'), cp); return; }
     var rec = up(e.target, '[data-open-record]'); if (rec) { openRecord(rec.getAttribute('data-open-record')); return; }
     var cell = up(e.target, '[data-edit-ym]');
     if (cell) { openRecordFor(cell.getAttribute('data-edit-ym'), cell.getAttribute('data-edit-cat')); return; }

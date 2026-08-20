@@ -86,18 +86,20 @@ var SLIP_NAMING = {
  *   แต่ละหมวดผูกกับคอลัมน์วันที่/จำนวน/สลิป ในชีตเดิม
  */
 var CATEGORIES = [
-  { key: 'rent',   name: 'ค่าเช่ารับเข้า',      dest: 'บัญชีเจ้าของบ้าน',   dateKey: 'rentDate',   amtKey: 'rentAmount',   slipKey: 'rentSlip',   income: true, color: 'var(--color-accent-800)' },
+  //   note = ข้อความสำหรับใส่ในช่องบันทึกช่วยจำตอนโอน (คัดลอกได้จากหน้าแอป)
+  //          ระบบต่อท้ายด้วยเดือน-ปี พ.ศ. ย่อ เช่น "ค่าส่วนกลางกิตติชัย ก.ค.69"
+  { key: 'rent',   name: 'ค่าเช่ารับเข้า',      dest: 'บัญชีเจ้าของบ้าน',   note: 'ค่าเช่ากิตติชัย',      dateKey: 'rentDate',   amtKey: 'rentAmount',   slipKey: 'rentSlip',   income: true, color: 'var(--color-accent-800)' },
   // หมวดคงที่: ตัดจากเงินเดือนอัตโนมัติทุกเดือน ไม่ต้องบันทึก/แนบสลิป (virtual — ไม่ผูกคอลัมน์)
   //   startYM = เดือนเริ่มผ่อน (yyyy-mm, ค.ศ.) — เริ่ม ม.ค. 2025
   { key: 'loan',   name: 'ค่าผ่อนบ้าน',         dest: 'ตัดจากเงินเดือน',    fixed: true, defaultAmount: 3000, startYM: '2025-01', color: 'var(--color-accent-600)' },
-  { key: 'extra',  name: 'ผ่อนบ้านเพิ่มเติม',   dest: 'ธนาคาร',             dateKey: 'extraDate',  amtKey: 'extraAmount',  slipKey: 'extraSlip',  color: 'var(--color-accent-700)' },
-  { key: 'common', name: 'ค่าส่วนกลาง',         dest: 'นิติบุคคลหมู่บ้าน',   dateKey: 'commonDate', amtKey: 'commonAmount', slipKey: 'commonSlip', color: 'var(--color-accent-500)' },
+  { key: 'extra',  name: 'ผ่อนบ้านเพิ่มเติม',   dest: 'ธนาคาร',             note: 'ค่าผ่อนกิตติชัยเพิ่ม', dateKey: 'extraDate',  amtKey: 'extraAmount',  slipKey: 'extraSlip',  color: 'var(--color-accent-700)' },
+  { key: 'common', name: 'ค่าส่วนกลาง',         dest: 'นิติบุคคลหมู่บ้าน',   note: 'ค่าส่วนกลางกิตติชัย',  dateKey: 'commonDate', amtKey: 'commonAmount', slipKey: 'commonSlip', color: 'var(--color-accent-500)' },
   // slipOptional = แนบสลิปได้ แต่ไม่บังคับ (ไม่มีสลิปก็นับว่าจ่ายแล้ว)
   // planAmount  = ยอดที่ "กันไว้" ต่อเดือน — เดือนไหนยังไม่โอนจะขึ้นเป็นยอดค้างสะสม
   //               และโอนรวบหลายเดือนทีเดียวได้ (แก้ตัวเลขตรงนี้ได้ตามจริง)
-  { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: 'erSlip',   slipOptional: true, planAmount: 500, color: 'var(--color-accent-400)' },
-  { key: 'gold',   name: 'ลงทุนทองคำ',          dest: 'ออมทองคำ',           dateKey: 'goldDate',   amtKey: 'goldAmount',   slipKey: 'goldSlip', slipOptional: true, planAmount: 300, color: 'var(--color-accent-2-600)' },
-  { key: 'tax',    name: 'กันภาษี',             dest: 'บัญชีภาษี',          dateKey: 'taxDate',    amtKey: 'taxAmount',    slipKey: 'taxSlip',  slipOptional: true, planAmount: 300, color: 'var(--color-accent-2-400)' }
+  { key: 'er',     name: 'เงินสำรองฉุกเฉิน',    dest: 'บัญชีสำรอง (ER)',    note: 'เงินสำรองฉุกเฉิน',     dateKey: 'erDate',     amtKey: 'erAmount',     slipKey: 'erSlip',   slipOptional: true, planAmount: 500, color: 'var(--color-accent-400)' },
+  { key: 'gold',   name: 'ลงทุนทองคำ',          dest: 'ออมทองคำ',           note: 'ออมทองคำ',            dateKey: 'goldDate',   amtKey: 'goldAmount',   slipKey: 'goldSlip', slipOptional: true, planAmount: 300, color: 'var(--color-accent-2-600)' },
+  { key: 'tax',    name: 'กันภาษี',             dest: 'บัญชีภาษี',          note: 'กันภาษี',             dateKey: 'taxDate',    amtKey: 'taxAmount',    slipKey: 'taxSlip',  slipOptional: true, planAmount: 300, color: 'var(--color-accent-2-400)' }
 ];
 
 /**
@@ -591,14 +593,40 @@ function cellToDateStr_(v) {
   return String(v == null ? '' : v).trim();
 }
 
-/** เลขงวดถัดไป เช่น มีถึง "งวดที่ 18" -> "งวดที่ 19" */
+/** เดือน-ปี พ.ศ. ย่อ สำหรับข้อความโอน เช่น '2026-07' -> 'ก.ค.69' */
+function noteMonth_(ym) {
+  var p = String(ym || '').split('-');
+  if (p.length !== 2) return '';
+  var be = (parseInt(p[0], 10) + 543) % 100;
+  return THAI_MONTHS_[parseInt(p[1], 10) - 1] + (be < 10 ? '0' : '') + be;
+}
+
+/**
+ * ข้อความสำหรับใส่ตอนโอน (คัดลอกไปวางในแอปธนาคาร)
+ * เดือนเดียว : "ค่าส่วนกลางกิตติชัย ก.ค.69"
+ * หลายเดือน  : "เงินสำรองฉุกเฉิน พ.ค.-ก.ค.69"
+ */
+function transferNote_(cat, ymFrom, ymTo) {
+  if (!cat || !cat.note) return '';
+  var a = noteMonth_(ymFrom);
+  if (!a) return cat.note;
+  if (!ymTo || ymTo === ymFrom) return cat.note + ' ' + a;
+  var b = noteMonth_(ymTo);
+  if (!b) return cat.note + ' ' + a;
+  // ปีเดียวกัน -> ตัดปีของตัวแรกออก เช่น "พ.ค.-ก.ค.69"
+  var yA = String(ymFrom).split('-')[0], yB = String(ymTo).split('-')[0];
+  if (yA === yB) a = a.replace(/\d{2}$/, '');
+  return cat.note + ' ' + a + '-' + b;
+}
+
+/** เลขงวดถัดไป — ใส่แค่ตัวเลข เช่น มีถึง 18 -> "19" */
 function nextInstallment_(block, map) {
   var max = 0;
   block.forEach(function (row) {
     var m = String(row[map.installment] || '').match(/(\d+)/);
     if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
   });
-  return 'งวดที่ ' + (max + 1);
+  return String(max + 1);
 }
 
 /** ป้ายเดือน-ปี (ค.ศ.) จากวันที่ dd/MM/yyyy เช่น "ก.ค. 2026" */
@@ -634,8 +662,10 @@ function getDashboard(offset) {
   if (offset > recs.length - 1) offset = recs.length - 1;
 
   var r = recs[offset];
+  var prev = recs[offset + 1] || null;    // เดือนก่อนหน้า (ใช้โชว์ว่าเดือนที่แล้วโอนเท่าไร)
   var incomeCat = CATEGORIES[0];         // rent
   var income = toNumber_(r[incomeCat.amtKey]);
+  var curYM = ymOf_(r[incomeCat.dateKey]) || ymOf_(r[CATEGORIES[3].dateKey]) || '';
 
   var allocations = [];
   CATEGORIES.forEach(function (c) {
@@ -662,7 +692,10 @@ function getDashboard(offset) {
     }
     allocations.push({
       key: c.key, name: c.name, dest: c.dest, color: c.color,
-      amount: amt, date: date, slip: slip, status: status, accrued: accrued
+      amount: amt, date: date, slip: slip, status: status, accrued: accrued,
+      prevAmount: prev ? toNumber_(prev[c.amtKey]) : 0,      // เดือนที่แล้วโอนเท่าไร
+      prevDate: prev ? (prev[c.dateKey] || '') : '',
+      note: transferNote_(c, curYM)                          // ข้อความสำหรับคัดลอกตอนโอน
     });
   });
 
@@ -843,7 +876,7 @@ function getInstallmentFor(dateStr) {
 
   var label = thaiMonthLabel_('01/' + ym.split('-')[1] + '/' + ym.split('-')[0], '');
   if (found) return { installment: found, isNew: false, monthLabel: label };
-  return { installment: 'งวดที่ ' + (max + 1), isNew: true, monthLabel: label };
+  return { installment: String(max + 1), isNew: true, monthLabel: label };
 }
 
 /** =========================================================================
@@ -888,8 +921,9 @@ function getPendingMonths(categoryKey) {
   });
 
   months.sort(function (a, b) { return a.ym < b.ym ? -1 : (a.ym > b.ym ? 1 : 0); });   // เก่า -> ใหม่
+  months.forEach(function (m) { m.note = transferNote_(cat, m.ym); });
   return {
-    catKey: cat.key, name: cat.name, dest: cat.dest,
+    catKey: cat.key, name: cat.name, dest: cat.dest, noteBase: cat.note || '',
     planAmount: cat.planAmount || 0, months: months, pendingTotal: total
   };
 }
